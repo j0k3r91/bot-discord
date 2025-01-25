@@ -118,7 +118,7 @@ sudo systemctl daemon-reload
 Activez le service pour qu'il se lance au démarrage :
 
 ```
-sudo systemctl enable discord_bot.service
+sudo systemctl enable discord-bot.service
 ```
 
 ### 6. Démarrer le service
@@ -126,7 +126,7 @@ sudo systemctl enable discord_bot.service
 Démarrez le service avec la commande suivante :
 
 ```
-sudo systemctl start discord_bot.service
+sudo systemctl start discord-bot.service
 ```
 
 ### 7. Vérifier l'état du service
@@ -134,7 +134,7 @@ sudo systemctl start discord_bot.service
 Pour vérifier que le service fonctionne correctement, utilisez la commande suivante :
 
 ```
-sudo systemctl status discord_bot.service
+sudo systemctl status discord-bot.service
 ```
 
 ### 8. Afficher les logs du service
@@ -142,7 +142,7 @@ sudo systemctl status discord_bot.service
 Pour voir les logs du service en temps réel, exécutez :
 
 ```
-journalctl -u discord_bot.service -f
+journalctl -u discord-bot.service -f
 ```
 
 ---
