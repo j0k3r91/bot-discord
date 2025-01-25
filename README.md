@@ -67,9 +67,9 @@ Il utilise la bibliothèque `discord.py` pour interagir avec l'API de Discord.
 
 Pour exécuter le bot en tant que service sur un système Linux, suivez ces étapes :
 
-### 1. Créer un fichier config systemd
+### 1. Créer un fichier de config systemd
 
-Créez un fichier d'unité dans `/etc/systemd/system/` avec l'extension `.service`. Par exemple, vous pouvez le nommer `discord-bot.service`.
+Créez un fichier dans `/etc/systemd/system/` avec l'extension `.service`. Par exemple, vous pouvez le nommer `discord-bot.service`.
 
 Exécutez la commande suivante dans un terminal :
 
