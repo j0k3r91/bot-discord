@@ -87,9 +87,9 @@ Description=Discord Bot
 After=network.target
 
 [Service]
-User=discord
-WorkingDirectory=/home/discord
-ExecStart=/usr/bin/python3 /home/discord/main.py
+User=votre_nom_utilisateur
+WorkingDirectory=/chemin/vers/votre/bot-discord
+ExecStart=/usr/bin/python3 /chemin/vers/votre/bot-discord/votre_script.py
 Restart=always
 
 [Install]
