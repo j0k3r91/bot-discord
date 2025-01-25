@@ -56,10 +56,106 @@ Il utilise la bibliothèque `discord.py` pour interagir avec l'API de Discord.
 
 1. Démarrez le bot avec la commande suivante :
    ```
-   python votre_script.py
+   python main.py
    ```
 
 2. Le bot se connectera à votre serveur Discord et commencera à faire des sondages et à envoyer des messages aux heures spécifiées.
+
+
+# Créer un Service pour le Bot Discord
+
+
+Pour exécuter le bot en tant que service sur un système Linux, suivez ces étapes :
+
+### 1. Créer un fichier config systemd
+
+Créez un fichier d'unité dans `/etc/systemd/system/` avec l'extension `.service`. Par exemple, vous pouvez le nommer `discord-bot.service`.
+
+Exécutez la commande suivante dans un terminal :
+
+```
+sudo nano /etc/systemd/system/discord-bot.service
+```
+
+### 2. Ajouter le contenu suivant au fichier
+
+Ajoutez le code suivant dans le fichier que vous venez d'ouvrir :
+
+```
+[Unit]
+Description=Discord Bot
+After=network.target
+
+[Service]
+User=discord
+WorkingDirectory=/home/discord
+ExecStart=/usr/bin/python3 /home/discord/main.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Assurez-vous de remplacer :
+- `votre_nom_utilisateur` : par votre nom d'utilisateur Linux.
+- `/chemin/vers/votre/bot-discord` : par le chemin absolu vers le répertoire de votre projet.
+- `/chemin/vers/votre/bot-discord/votre_script.py` : par le chemin vers le script Python que vous exécutez.
+
+### 3. Enregistrer et fermer l'éditeur
+
+Sauvegardez le fichier dans l'éditeur (`Ctrl + O`, puis `Enter` pour enregistrer et `Ctrl + X` pour quitter si vous utilisez `nano`).
+
+### 4. Recharger systemd
+
+Pour prendre en compte le nouveau service, exécutez la commande suivante :
+
+```
+sudo systemctl daemon-reload
+```
+
+### 5. Activer le service
+
+Activez le service pour qu'il se lance au démarrage :
+
+```
+sudo systemctl enable discord_bot.service
+```
+
+### 6. Démarrer le service
+
+Démarrez le service avec la commande suivante :
+
+```
+sudo systemctl start discord_bot.service
+```
+
+### 7. Vérifier l'état du service
+
+Pour vérifier que le service fonctionne correctement, utilisez la commande suivante :
+
+```
+sudo systemctl status discord_bot.service
+```
+
+### 8. Afficher les logs du service
+
+Pour voir les logs du service en temps réel, exécutez :
+
+```
+journalctl -u discord_bot.service -f
+```
+
+---
+
+Cela vous permettra de garder votre bot en fonctionnement en arrière-plan, même après le redémarrage de votre système.
+
+### N'oubliez pas
+
+- Assurez-vous que votre script Python fonctionne comme prévu avant de le configurer en tant que service.
+- Les chemins indiqués doivent correspondre à la structure de votre système.
+- Vérifiez les permissions du fichier du service pour qu'il soit accessible par `systemd`.
+
+
 
 ## Contribuer
 
