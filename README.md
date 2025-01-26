@@ -161,10 +161,6 @@ Cela vous permettra de garder votre bot en fonctionnement en arrière-plan, mêm
 
 Les contributions sont les bienvenues ! N'hésitez pas à soumettre une demande de pull request ou à signaler des problèmes sur le dépôt GitHub.
 
-## License
-
-Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus de détails.
-
 ## Aide et Ressources
 
 - [Documentation de discord.py](https://discordpy.readthedocs.io/en/stable/)
