@@ -3,7 +3,9 @@ import os
 from dotenv import load_dotenv
 import asyncio
 from datetime import timedelta, datetime
+from discord.ext import commands, tasks
 import logging
+from zoneinfo import ZoneInfo  # Python 3.9+ (ou utilisez pytz pour versions antérieures)
 
 # Charger les variables d'environnement
 load_dotenv()
@@ -11,129 +13,232 @@ load_dotenv()
 # Configuration du logging
 logging.basicConfig(
     level=logging.INFO,
-    filename='/home/discord/discord-bot.log',  # Chemin où le log sera enregistré
-    filemode='a',  # 'a' pour ajouter, 'w' pour écraser
+    filename='/home/discord/discord-bot.log',
+    filemode='a',
     format='%(asctime)s - %(levelname)s - %(message)s'
-    )
+)
 
-# Créer un bot sans commande manuelle
+# Constantes
+POLL_CREATION_HOUR = 18
+POLL_CREATION_MINUTE = 0
+POLL_DELETION_HOUR = 0
+POLL_DELETION_MINUTE = 0
+BOSS_EVENT_HOUR = 20
+BOSS_EVENT_MINUTE = 30
+SIEGE_EVENT_HOUR = 14
+SIEGE_EVENT_MINUTE = 30
+TIMEZONE = "Europe/Paris"
+
+class BotState:
+    """Classe pour encapsuler l'état du bot"""
+    def __init__(self):
+        self.poll_message = None
+        self.text_message = None
+        self.weekend_event_messages = []
+
+# Créer le bot avec les intents nécessaires
 intents = discord.Intents.default()
-client = discord.Client(intents=intents)
+intents.message_content = True
+bot = commands.Bot(command_prefix='!', intents=intents)
 
-# ID des canaux (récupérés depuis les variables d'environnement)
-CHANNEL_ID_DP = os.getenv('CHANNEL_ID_DP')  # ID du canal donjon-party pour le sondage et le message
-CHANNEL_ID_BOSS = os.getenv('CHANNEL_ID_BOSS')  # ID du canal pour le message canal boss-event
-CHANNEL_ID_SIEGE = os.getenv('CHANNEL_ID_SIEGE')  # ID du canal siege-raid pour le message du dimanche à 14:30
+# Instance de l'état du bot
+bot_state = BotState()
 
-# Variables globales pour stocker les messages
-poll_message = None
-text_message = None
-weekend_event_messages = []  # Liste pour garder une trace des messages envoyés pour les événements du week-end
+# Vérification et récupération des variables d'environnement
+def get_env_variables():
+    """Récupère et valide les variables d'environnement"""
+    required_vars = {
+        'TOKEN_DISCORD': os.getenv('TOKEN_DISCORD'),
+        'CHANNEL_ID_DP': os.getenv('CHANNEL_ID_DP'),
+        'CHANNEL_ID_BOSS': os.getenv('CHANNEL_ID_BOSS'),
+        'CHANNEL_ID_SIEGE': os.getenv('CHANNEL_ID_SIEGE')
+    }
+    
+    for var_name, var_value in required_vars.items():
+        if not var_value:
+            logging.error(f"Variable d'environnement {var_name} non définie dans .env")
+            raise ValueError(f"Variable d'environnement manquante: {var_name}")
+    
+    return required_vars
 
-# Fonction pour créer un sondage avec la nouvelle API Poll Resource
+# Récupérer les variables d'environnement
+try:
+    env_vars = get_env_variables()
+    CHANNEL_ID_DP = int(env_vars['CHANNEL_ID_DP'])
+    CHANNEL_ID_BOSS = int(env_vars['CHANNEL_ID_BOSS'])
+    CHANNEL_ID_SIEGE = int(env_vars['CHANNEL_ID_SIEGE'])
+    TOKEN_DISCORD = env_vars['TOKEN_DISCORD']
+except (ValueError, TypeError) as e:
+    logging.error(f"Erreur de configuration: {e}")
+    exit(1)
+
+def get_current_time():
+    """Retourne l'heure actuelle dans le timezone configuré"""
+    return datetime.now(ZoneInfo(TIMEZONE))
+
 async def create_poll():
-    global poll_message, text_message
+    """Créer un sondage avec la nouvelle API Poll Resource"""
+    global bot_state
 
-    channel = client.get_channel(int(CHANNEL_ID_DP))
-
+    channel = bot.get_channel(CHANNEL_ID_DP)
     if not channel:
-        logging.error("Impossible de trouver le canal.")
+        logging.error(f"Impossible de trouver le canal {CHANNEL_ID_DP}.")
         return
 
-    poll = discord.Poll(
-        question="Présence pour le 👥Donjon Party👥 du soir à 21h (heure de Paris) - 15h (heure du Québec).",  # Question du sondage
-        duration=timedelta(hours=8)  # Durée de 8 heures
-    )
+    try:
+        # Supprimer les anciens messages s'ils existent
+        await delete_poll_messages()
 
-    poll.add_answer(text="Oui", emoji="✅")
-    poll.add_answer(text="Non", emoji="❌")
+        poll = discord.Poll(
+            question="Présence pour le 👥Donjon Party👥 du soir à 21h (heure de Paris) - 15h (heure du Québec).",
+            duration=timedelta(hours=8)
+        )
 
-    poll_message = await channel.send(poll=poll)
-    logging.info("Sondage créé avec succès !")
+        poll.add_answer(text="Oui", emoji="✅")
+        poll.add_answer(text="Non", emoji="❌")
 
-    text_message = await channel.send("⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️@everyone⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️")
-    logging.info("Message texte créé avec succès !")
+        bot_state.poll_message = await channel.send(poll=poll)
+        logging.info("Sondage créé avec succès !")
 
-# Fonction générique pour gérer les événements (boss et siege)
+        bot_state.text_message = await channel.send("⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️@everyone⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️")
+        logging.info("Message texte créé avec succès !")
+
+    except discord.DiscordException as e:
+        logging.error(f"Erreur lors de la création du sondage : {e}")
+
 async def send_event_message(channel_id, message_list, event_message):
-    # ID du canal
-    channel = client.get_channel(channel_id)
-    if channel:
-        try:
-            # Supprimer les messages précédents de l'événement
-            await delete_messages(message_list)
-            # Envoyer un nouveau message
-            message = await channel.send(event_message)
-            message_list.append(message)  # Ajouter ce message à la liste
-            logging.info(f"Message de l'événement envoyé avec succès dans le canal {channel_id} !")
-        except discord.DiscordException as e:
-            logging.error(f"Erreur lors de l'envoi du message de l'événement : {e}")
+    """Fonction générique pour gérer les événements (boss et siege)"""
+    channel = bot.get_channel(channel_id)
+    if not channel:
+        logging.error(f"Impossible de trouver le canal {channel_id}.")
+        return
 
-# Fonction pour supprimer les messages (sondage, texte, ou événement)
+    try:
+        # Supprimer les messages précédents de l'événement
+        await delete_messages(message_list)
+        
+        # Envoyer un nouveau message
+        message = await channel.send(event_message)
+        message_list.append(message)
+        logging.info(f"Message de l'événement envoyé avec succès dans le canal {channel_id} !")
+        
+    except discord.DiscordException as e:
+        logging.error(f"Erreur lors de l'envoi du message de l'événement : {e}")
+
 async def delete_messages(message_list):
-    for msg in message_list:
-        try:
-            await msg.delete()
-            logging.info(f"Message supprimé : {msg.id}")
-        except discord.DiscordException as e:
-            logging.error(f"Erreur lors de la suppression du message {msg.id} : {e}")
+    """Supprimer une liste de messages"""
+    for msg in message_list[:]:  # Copie pour éviter les modifications durant l'itération
+        if msg:
+            try:
+                await msg.delete()
+                message_list.remove(msg)
+                logging.info(f"Message supprimé : {msg.id}")
+            except discord.DiscordException as e:
+                logging.error(f"Erreur lors de la suppression du message {msg.id if msg else 'None'} : {e}")
 
-# Tâche pour envoyer un message tous les samedis et dimanches à 20:30 (événement boss)
-async def send_boss_message():
-    while True:
-        now = datetime.now()
-
-        if now.weekday() in [5, 6] and now.hour == 20 and now.minute == 30:
-            await send_event_message(int(CHANNEL_ID_BOSS), weekend_event_messages, "⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️@everyone⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️")
-
-        await asyncio.sleep(60)
-
-# Tâche pour envoyer un message tous les dimanches à 14:30 (événement siege)
-async def send_siege_message():
-    while True:
-        now = datetime.now()
-
-        if now.weekday() == 6 and now.hour == 14 and now.minute == 30:
-            await send_event_message(int(CHANNEL_ID_SIEGE), weekend_event_messages, "⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️@everyone⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️")
-
-        await asyncio.sleep(60)
-
-# Tâche qui crée le sondage et le message texte tous les jours à 18:00
-async def poll_cycle():
-    while True:
-        now = datetime.now()
-
-        if now.hour == 18 and now.minute == 0:
-            await create_poll()  # Créer un nouveau sondage et message texte
-            logging.info("Sondage et message texte créés à 18:00 !")
-
-        await asyncio.sleep(60)
-
-# Tâche pour supprimer le sondage et le message texte tous les jours à 00:00
 async def delete_poll_messages():
-    global poll_message, text_message
-    while True:
-        now = datetime.now()
+    """Supprimer les messages de sondage et texte"""
+    global bot_state
+    
+    messages_to_delete = []
+    if bot_state.poll_message:
+        messages_to_delete.append(bot_state.poll_message)
+    if bot_state.text_message:
+        messages_to_delete.append(bot_state.text_message)
+    
+    if messages_to_delete:
+        await delete_messages(messages_to_delete)
+        bot_state.poll_message = None
+        bot_state.text_message = None
 
-        if now.hour == 0 and now.minute == 0:
-            # Supprimer les messages du sondage et texte
-            if poll_message or text_message:
-                await delete_messages([poll_message, text_message])
-                poll_message = None
-                text_message = None
+@tasks.loop(minutes=1)
+async def schedule_checker():
+    """Vérificateur de planning principal"""
+    now = get_current_time()
+    
+    # Création du sondage quotidien à 18:00
+    if now.hour == POLL_CREATION_HOUR and now.minute == POLL_CREATION_MINUTE:
+        await create_poll()
+        logging.info("Sondage et message texte créés à 18:00 !")
+    
+    # Suppression du sondage quotidien à 00:00
+    elif now.hour == POLL_DELETION_HOUR and now.minute == POLL_DELETION_MINUTE:
+        await delete_poll_messages()
+        logging.info("Messages de sondage supprimés à 00:00 !")
+    
+    # Événement boss les samedis et dimanches à 20:30
+    elif (now.weekday() in [5, 6] and 
+          now.hour == BOSS_EVENT_HOUR and 
+          now.minute == BOSS_EVENT_MINUTE):
+        await send_event_message(
+            CHANNEL_ID_BOSS, 
+            bot_state.weekend_event_messages, 
+            "⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️@everyone⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️"
+        )
+        logging.info("Message boss envoyé pour le week-end !")
+    
+    # Événement siege les dimanches à 14:30
+    elif (now.weekday() == 6 and 
+          now.hour == SIEGE_EVENT_HOUR and 
+          now.minute == SIEGE_EVENT_MINUTE):
+        await send_event_message(
+            CHANNEL_ID_SIEGE, 
+            bot_state.weekend_event_messages, 
+            "⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️@everyone⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️"
+        )
+        logging.info("Message siege envoyé pour le dimanche !")
 
-        await asyncio.sleep(60)
+@schedule_checker.before_loop
+async def before_schedule_checker():
+    """Attendre que le bot soit prêt avant de démarrer les tâches"""
+    await bot.wait_until_ready()
 
-# Lorsque le bot est prêt, démarre les tâches nécessaires
-@client.event
+@bot.event
 async def on_ready():
-    logging.info(f"Bot connecté en tant que {client.user}")
+    """Événement déclenché quand le bot est prêt"""
+    logging.info(f"Bot connecté en tant que {bot.user}")
+    
+    # Démarrer le vérificateur de planning
+    if not schedule_checker.is_running():
+        schedule_checker.start()
+        logging.info("Tâches de planning démarrées !")
 
-    # Démarrer les tâches
-    client.loop.create_task(send_boss_message())
-    client.loop.create_task(send_siege_message())
-    client.loop.create_task(poll_cycle())
-    client.loop.create_task(delete_poll_messages())
+@bot.event
+async def on_error(event, *args, **kwargs):
+    """Gestionnaire d'erreurs global"""
+    logging.error(f"Erreur dans l'événement {event}: {args}, {kwargs}")
 
-# Lancer le bot avec le token
-client.run(os.getenv('TOKEN_DISCORD'))  # Utilise la variable d'environnement TOKEN_DISCORD
+# Commande de test (optionnelle)
+@bot.command(name='test')
+@commands.has_permissions(administrator=True)
+async def test_command(ctx):
+    """Commande de test pour les administrateurs"""
+    await ctx.send("Bot fonctionnel ! ✅")
+
+@bot.command(name='status')
+@commands.has_permissions(administrator=True)
+async def status_command(ctx):
+    """Affiche le statut du bot"""
+    now = get_current_time()
+    status_msg = f"""
+**Statut du Bot** 🤖
+Heure actuelle: {now.strftime('%H:%M:%S')}
+Sondage actif: {'Oui' if bot_state.poll_message else 'Non'}
+Messages d'événements: {len(bot_state.weekend_event_messages)}
+Tâches actives: {'Oui' if schedule_checker.is_running() else 'Non'}
+    """
+    await ctx.send(status_msg)
+
+# Gestionnaire d'erreur pour les commandes
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ Vous n'avez pas les permissions nécessaires.")
+    else:
+        logging.error(f"Erreur de commande: {error}")
+
+if __name__ == "__main__":
+    try:
+        bot.run(TOKEN_DISCORD)
+    except Exception as e:
+        logging.error(f"Erreur critique lors du démarrage du bot: {e}")
