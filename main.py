@@ -61,7 +61,7 @@ BOSS_KEYWORDS = ["boss", "samedi", "dimanche"]
 # Mots-clés pour identifier les événements siege
 SIEGE_KEYWORDS = ["siège", "grotte", "cristal"]
 
-# ======================== CLASSE DE GESTION DE L'ÉTAT DU BOT (MODIFIÉE) ========================
+# ======================== CLASSE DE GESTION DE L'ÉTAT DU BOT ========================
 
 class BotState:
     """Classe pour encapsuler l'état du bot et suivre tous les messages actifs"""
@@ -242,7 +242,7 @@ async def filter_events_by_criteria(events, weekdays, keywords):
     
     return filtered_events
 
-# ======================== FONCTIONS DE MISE À JOUR HEBDOMADAIRE ========================
+# ======================== FONCTIONS DE MISE À JOUR HEBDOMADAIRE (CORRIGÉES) ========================
 
 async def update_boss_messages():
     """Met à jour les messages d'événements boss avec les nouveaux liens (DEUX MESSAGES SÉPARÉS)"""
@@ -260,8 +260,9 @@ async def update_boss_messages():
             logging.info("Aucun événement boss trouvé pour cette semaine")
             return
         
-        # Suppression des anciens messages boss (SEULEMENT les liens)
+        # CORRECTION : Supprimer TOUS les messages boss (liens ET notifications)
         await delete_messages(bot_state.boss_event_messages)
+        await delete_messages(bot_state.boss_notification_messages)
         
         # Récupération du canal boss
         channel = bot.get_channel(CHANNEL_ID_BOSS)
@@ -303,6 +304,7 @@ async def update_boss_messages():
         
         total_events = len(saturday_events) + len(sunday_events)
         logging.info(f"Mise à jour boss terminée: {total_events} événement(s) dans 2 messages séparés")
+        logging.info("Messages @everyone boss précédents supprimés")
         
     except Exception as e:
         logging.error(f"Erreur lors de la mise à jour des messages boss: {e}")
@@ -323,8 +325,9 @@ async def update_siege_messages():
             logging.info("Aucun événement siege trouvé pour cette semaine")
             return
         
-        # Suppression des anciens messages siege (SEULEMENT les liens)
+        # CORRECTION : Supprimer TOUS les messages siege (liens ET notifications)
         await delete_messages(bot_state.siege_event_messages)
+        await delete_messages(bot_state.siege_notification_messages)
         
         # Récupération du canal siege
         channel = bot.get_channel(CHANNEL_ID_SIEGE)
@@ -342,6 +345,7 @@ async def update_siege_messages():
             logging.info(f"Message siege créé pour: {event_data['name']}")
         
         logging.info(f"Mise à jour siege terminée: {len(siege_events)} événement(s) traité(s)")
+        logging.info("Messages @everyone siege précédents supprimés")
         
     except Exception as e:
         logging.error(f"Erreur lors de la mise à jour des messages siege: {e}")
@@ -365,7 +369,7 @@ async def weekly_event_update():
     except Exception as e:
         logging.error(f"Erreur lors de la mise à jour hebdomadaire: {e}")
 
-# ======================== FONCTIONS DE RÉCUPÉRATION DES MESSAGES EXISTANTS (MODIFIÉE) ========================
+# ======================== FONCTIONS DE RÉCUPÉRATION DES MESSAGES EXISTANTS ========================
 
 async def recover_existing_messages():
     """Récupère les messages existants au redémarrage du bot pour éviter les doublons"""
@@ -451,13 +455,13 @@ async def create_poll():
     except discord.DiscordException as e:
         logging.error(f"Erreur lors de la création du sondage : {e}")
 
-# ======================== FONCTIONS DE NOTIFICATIONS D'ÉVÉNEMENTS (MODIFIÉES) ========================
+# ======================== FONCTIONS DE NOTIFICATIONS D'ÉVÉNEMENTS ========================
 
 async def send_boss_event():
     """Gérer spécifiquement les notifications d'événements boss (samedi/dimanche 20h30)"""
     await send_notification_message(
         CHANNEL_ID_BOSS, 
-        bot_state.boss_notification_messages,  # NOUVELLE LISTE séparée
+        bot_state.boss_notification_messages,  # LISTE séparée pour les notifications
         "⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️@everyone⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️"
     )
 
@@ -465,7 +469,7 @@ async def send_siege_event():
     """Gérer spécifiquement les notifications d'événements siege (dimanche 14h30)"""
     await send_notification_message(
         CHANNEL_ID_SIEGE, 
-        bot_state.siege_notification_messages,  # NOUVELLE LISTE séparée
+        bot_state.siege_notification_messages,  # LISTE séparée pour les notifications
         "⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️@everyone⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️"
     )
 
@@ -516,7 +520,7 @@ async def delete_poll_messages():
         bot_state.poll_message = None
         bot_state.text_message = None
 
-# ======================== SYSTÈME DE PLANIFICATION AUTOMATIQUE ========================
+# ======================== SYSTÈME DE PLANIFICATION AUTOMATIQUE (CORRIGÉ) ========================
 
 @tasks.loop(minutes=1)  # Vérification toutes les minutes
 async def schedule_checker():
@@ -532,15 +536,16 @@ async def schedule_checker():
         bot_state.last_poll_creation = current_date
         logging.info("Sondage et message texte créés à 18:00 !")
     
+    # CORRECTION : Changement de elif en if pour permettre les deux actions à 00:00
     # Suppression du sondage quotidien à 00:00 (avec protection doublon)
-    elif (now.hour == POLL_DELETION_HOUR and now.minute == POLL_DELETION_MINUTE
+    if (now.hour == POLL_DELETION_HOUR and now.minute == POLL_DELETION_MINUTE
           and bot_state.last_poll_deletion != current_date):
         await delete_poll_messages()
         bot_state.last_poll_deletion = current_date
         logging.info("Messages de sondage supprimés à 00:00 !")
     
     # Mise à jour hebdomadaire des événements (lundi 00:00)
-    elif (now.weekday() == WEEKLY_UPDATE_DAY and 
+    if (now.weekday() == WEEKLY_UPDATE_DAY and 
           now.hour == WEEKLY_UPDATE_HOUR and 
           now.minute == WEEKLY_UPDATE_MINUTE and
           bot_state.last_weekly_update != current_date):
@@ -708,7 +713,7 @@ async def status_command(ctx):
     """
     await ctx.send(status_msg)
 
-# ======================== COMMANDES DE FORCE ET DE NETTOYAGE (MODIFIÉES) ========================
+# ======================== COMMANDES DE FORCE ET DE NETTOYAGE ========================
 
 @bot.command(name='force_poll')
 @commands.has_permissions(administrator=True)
