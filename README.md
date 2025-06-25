@@ -1,615 +1,167 @@
-\===============================================================================
+# Bot Discord for Event Management
 
-           BOT DISCORD FOR EVENT MANAGEMENT
+Ce bot Discord, est conçu pour gérer des événements au sein d'un serveur Discord, 
+notamment des sondages pour des événements de jeu tels que des "Donjons Parties" et des notifications pour des événements spéciaux tels que des raids ou des boss.
+Il utilise la bibliothèque `discord.py` pour interagir avec l'API de Discord.
 
-\===============================================================================
+## Fonctionnalités
 
-  
+- Création automatique de sondages pour les événements de jeu.
+- Envoi de rappels pour des événements récurrents, comme les boss-events le week-end.
+- Suppression automatique des sondages et des messages associés à minuit.
+- Support de messages envoyés dans différents canaux selon les événements.
 
-Ce bot Discord avancé est conçu pour gérer automatiquement des événements au 
+## Prérequis
 
-sein d'un serveur Discord. Il gère les sondages quotidiens, les notifications 
+- Python : Version 3.6 ou plus.
+- Dépendances :
+  - `discord.py`
+  - `python-dotenv` (pour gérer les variables d'environnement)
 
-d'événements récurrents, et maintient automatiquement les liens vers les 
+## Installation
 
-événements Discord programmés. Parfait pour les communautés de jeu et les guildes.
+1. Clonez le dépôt :
+   ```
+   git clone https://github.com/j0k3r91/bot-discord.git
+   cd bot-discord
+   ```
 
-  
+2. Créez un environnement virtuel (optionnel) :
+   ```
+   python -m venv venv
+   source venv/bin/activate  # sur Linux/Mac
+   venv\Scripts\activate  # sur Windows
+   ```
 
-\===============================================================================
+3. Installez les dépendances :
+   ```
+   pip install discord.py python-dotenv
+   ```
 
-              FONCTIONNALITÉS PRINCIPALES
+4. Créez un fichier `.env` :
+   Ce fichier doit contenir vos variables d'environnement. Exemple :
+   ```
+   TOKEN_DISCORD=VotreTokenIci
+   CHANNEL_ID_DP=VotreChannelIDDonjonParty
+   CHANNEL_ID_BOSS=VotreChannelIDBoss
+   CHANNEL_ID_SIEGE=VotreChannelIDSiege
+   ```
 
-\===============================================================================
+   - `TOKEN_DISCORD` : Le token de votre bot Discord, que vous pouvez obtenir depuis le [portail des développeurs Discord](https://discord.com/developers/applications).
+   - `CHANNEL_ID_DP` : L'ID du canal dans lequel le bot enverra les sondages.
+   - `CHANNEL_ID_BOSS` : L'ID du canal où le bot enverra les messages pour les événements de boss.
+   - `CHANNEL_ID_SIEGE` : L'ID du canal pour les messages de siège.
 
-  
+## Utilisation
 
-Gestion Automatique des Sondages
+1. Démarrez le bot avec la commande suivante :
+   ```
+   python main.py
+   ```
 
-\---------------------------------
+2. Le bot se connectera à votre serveur Discord et commencera à faire des sondages et à envoyer des messages aux heures spécifiées.
 
-\- Création automatique de sondages quotidiens à 18h00 (heure de Paris)
 
-\- Suppression automatique des sondages à minuit
+# Créer un Service pour le Bot Discord
 
-\- Protection anti-doublon pour éviter les créations multiples
 
-  
+Pour exécuter le bot en tant que service sur un système Linux, suivez ces étapes :
 
-Gestion des Événements Discord
+### 1. Créer un fichier de config systemd
 
-\------------------------------
+Créez un fichier dans `/etc/systemd/system/` avec l'extension `.service`. Par exemple, vous pouvez le nommer `discord-bot.service`.
 
-\- Récupération automatique des événements programmés sur le serveur
+Exécutez la commande suivante dans un terminal :
 
-\- Mise à jour hebdomadaire des liens d'événements (chaque lundi à 00:00)
+```
+sudo nano /etc/systemd/system/discord-bot.service
+```
 
-\- Filtrage intelligent des événements par mots-clés et jours de la semaine
+### 2. Ajouter le contenu suivant au fichier
 
-\- Templates personnalisables pour les messages d'événements
+Ajoutez le code suivant dans le fichier que vous venez d'ouvrir :
 
-  
+```
+[Unit]
+Description=Discord Bot
+After=network.target
 
-Notifications Automatiques
+[Service]
+User=votre_nom_utilisateur
+WorkingDirectory=/chemin/vers/votre/bot-discord
+ExecStart=/usr/bin/python3 /chemin/vers/votre/bot-discord/votre_script.py
+Restart=always
 
-\---------------------------
+[Install]
+WantedBy=multi-user.target
+```
 
-\- Boss Events : Notifications les samedis et dimanches à 20:30
+Assurez-vous de remplacer :
+- `votre_nom_utilisateur` : par votre nom d'utilisateur Linux.
+- `/chemin/vers/votre/bot-discord` : par le chemin absolu vers le répertoire de votre projet.
+- `/chemin/vers/votre/bot-discord/votre_script.py` : par le chemin vers le script Python que vous exécutez.
 
-\- Siege Events : Notifications les dimanches à 14:30
+### 3. Enregistrer et fermer l'éditeur
 
-\- Messages @everyone pour alerter la communauté
+Sauvegardez le fichier dans l'éditeur (`Ctrl + O`, puis `Enter` pour enregistrer et `Ctrl + X` pour quitter si vous utilisez `nano`).
 
-  
+### 4. Recharger systemd
 
-Système de Cache
+Pour prendre en compte le nouveau service, exécutez la commande suivante :
 
-\----------------
+```
+sudo systemctl daemon-reload
+```
 
-\- Cache local des événements pour optimiser les performances
+### 5. Activer le service
 
-\- Mise à jour intelligente du cache lors des modifications
+Activez le service pour qu'il se lance au démarrage :
 
-  
+```
+sudo systemctl enable discord-bot.service
+```
 
-\===============================================================================
+### 6. Démarrer le service
 
-              NOUVELLES FONCTIONNALITÉS
+Démarrez le service avec la commande suivante :
 
-\===============================================================================
+```
+sudo systemctl start discord-bot.service
+```
 
-  
+### 7. Vérifier l'état du service
 
-Gestion Avancée des Liens d'Événements
+Pour vérifier que le service fonctionne correctement, utilisez la commande suivante :
 
-\---------------------------------------
+```
+sudo systemctl status discord-bot.service
+```
 
-\- Récupération automatique de tous les événements Discord du serveur
+### 8. Afficher les logs du service
 
-\- Liens directs générés automatiquement vers les événements
+Pour voir les logs du service en temps réel, exécutez :
 
-\- Regroupement intelligent des événements boss du weekend dans un seul message
-
-\- Filtrage par mots-clés : "boss", "raid", "siège", "grotte", "cristal"
-
-  
-
-Commandes Administrateur Complètes
-
-\-----------------------------------
-
-\- Consultation des événements en temps réel
-
-\- Mise à jour manuelle des liens d'événements
-
-\- Nettoyage sélectif des messages
-
-\- Monitoring complet du statut du bot
-
-  
-
-\===============================================================================
-
-                 PRÉREQUIS
-
-\===============================================================================
-
-  
-
-\- Python : Version 3.9+ (pour zoneinfo)
-
-\- Dépendances :
-
- \* discord.py (version récente avec support des Polls)
-
- \* python-dotenv
-
-  
-
-\===============================================================================
-
-                INSTALLATION
-
-\===============================================================================
-
-  
-
-1\. Clonez le dépôt :
-
-  git clone https://github.com/j0k3r91/bot-discord.git
-
-  cd bot-discord
-
-  
-
-2\. Créez un environnement virtuel (recommandé) :
-
-  python -m venv venv
-
-  source venv/bin/activate # Linux/Mac
-
-  venv\\Scripts\\activate   # Windows
-
-  
-
-3\. Installez les dépendances :
-
-  pip install discord.py python-dotenv
-
-  
-
-4\. Configurez les variables d'environnement :
-
-  Créez un fichier .env dans le répertoire du projet :
-
-  TOKEN\_DISCORD=VotreTokenDiscordIci
-
-  CHANNEL\_ID\_DP=IDDuCanalDonjonParty
-
-  CHANNEL\_ID\_BOSS=IDDuCanalBossEvents
-
-  CHANNEL\_ID\_SIEGE=IDDuCanalSiegeEvents
-
-  
-
-  Comment obtenir les IDs :
-
-  - Token Discord : Portail Développeurs Discord
-
-   (https://discord.com/developers/applications)
-
-  - IDs des canaux : Mode développeur Discord → Clic droit sur canal 
-
-   → "Copier l'identifiant"
-
-  
-
-\===============================================================================
-
-                UTILISATION
-
-\===============================================================================
-
-  
-
-Démarrage du Bot
-
-\----------------
-
-python main.py
-
-  
-
-Automatisations Programmées
-
-\----------------------------
-
-HORAIRE     | ACTION          | DESCRIPTION
-
-\----------------|---------------------------|----------------------------------
-
-18:00      | Création sondage     | Sondage quotidien "Donjon Party"
-
-00:00      | Suppression sondage   | Nettoyage automatique
-
-Lundi 00:00   | Mise à jour événements  | Actualisation des liens hebdomadaires
-
-Sam/Dim 20:30  | Notification boss    | Rappel événements boss
-
-Dim 14:30    | Notification siège    | Rappel événements siège
-
-  
-
-\===============================================================================
-
-              COMMANDES DISCORD
-
-\===============================================================================
-
-  
-
-Consultation des Événements
-
-\----------------------------
-
-!events       - Affiche tous les événements avec leurs liens
-
-!event\_link <nom>  - Recherche un événement spécifique
-
-!update\_events    - Met à jour le cache des événements
-
-  
-
-Mise à Jour des Liens
-
-\---------------------
-
-!update\_boss\_links  - Met à jour les liens d'événements boss
-
-!update\_siege\_links - Met à jour les liens d'événements siège
-
-!update\_all\_links  - Met à jour tous les liens d'événements
-
-  
-
-Gestion des Sondages
-
-\--------------------
-
-!force\_poll     - Crée un sondage manuellement
-
-!clean\_poll     - Supprime les messages de sondage
-
-  
-
-Gestion des Événements
-
-\----------------------
-
-!force\_boss     - Envoie une notification boss
-
-!force\_siege     - Envoie une notification siège
-
-!clean\_events    - Supprime tous les messages d'événements
-
-  
-
-Utilitaires
-
-\-----------
-
-!status       - Affiche le statut complet du bot
-
-!test        - Vérifie le fonctionnement du bot
-
-!recover       - Récupère les messages existants
-
-!clean\_all      - Nettoie tous les messages du bot
-
-!help\_admin     - Affiche l'aide complète
-
-  
-
-NOTE: Toutes les commandes nécessitent les permissions administrateur.
-
-  
-
-\===============================================================================
-
-              CONFIGURATION AVANCÉE
-
-\===============================================================================
-
-  
-
-Templates de Messages
-
-\---------------------
-
-Le bot utilise des templates personnalisables pour les messages d'événements :
-
-  
-
-Template Boss Events:
-
-"Présence pour l'événement Boss du weekend (samedi et dimanche) à 21h00 
-
-(heure de Paris) - 15h00 (heure du Québec).
-
-Merci de venir 15 minutes avant l'événement.
-
-{boss\_links}"
-
-  
-
-Template Siege Events:
-
-"Présence pour le siège du donjon de la Grotte de Cristal le dimanche à 15h00 
-
-(heure de Paris) - 9h00 (heure du Québec).
-
-Merci de venir 15 minutes avant l'événement.
-
-{siege\_links}"
-
-  
-
-Filtres d'Événements
-
-\--------------------
-
-Mots-clés pour les événements boss: \["boss", "samedi", "dimanche"\]
-
-Mots-clés pour les événements siège: \["siège", "grotte", "cristal"\]
-
-  
-
-\===============================================================================
-
-          INSTALLATION EN TANT QUE SERVICE LINUX
-
-\===============================================================================
-
-  
-
-1\. Créer le fichier service
-
-  sudo nano /etc/systemd/system/discord-bot.service
-
-  
-
-2\. Configuration du service
-
-  \[Unit\]
-
-  Description=Discord Event Management Bot
-
-  After=network.target
-
-  
-
-  \[Service\]
-
-  Type=simple
-
-  User=votre\_utilisateur
-
-  WorkingDirectory=/chemin/vers/bot-discord
-
-  ExecStart=/usr/bin/python3 /chemin/vers/bot-discord/main.py
-
-  Restart=always
-
-  RestartSec=10
-
-  
-
-  \[Install\]
-
-  WantedBy=multi-user.target
-
-  
-
-3\. Activation du service
-
-  # Recharger systemd
-
-  sudo systemctl daemon-reload
-
-  
-
-  # Activer au démarrage
-
-  sudo systemctl enable discord-bot.service
-
-  
-
-  # Démarrer le service
-
-  sudo systemctl start discord-bot.service
-
-  
-
-  # Vérifier le statut
-
-  sudo systemctl status discord-bot.service
-
-  
-
-  # Voir les logs en temps réel
-
-  journalctl -u discord-bot.service -f
-
-  
-
-\===============================================================================
-
-              STRUCTURE DU PROJET
-
-\===============================================================================
-
-  
-
-bot-discord/
-
-├── main.py         # Script principal du bot
-
-├── .env          # Variables d'environnement (à créer)
-
-├── .env.example      # Exemple de configuration
-
-├── requirements.txt    # Dépendances Python
-
-├── README.md       # Documentation
-
-└── logs/
-
-  └── discord-bot.log  # Fichiers de logs
-
-  
-
-\===============================================================================
-
-              MONITORING ET LOGS
-
-\===============================================================================
-
-  
-
-Le bot génère des logs détaillés pour le monitoring :
-
-  
-
-\- Fichier de log : /home/discord/discord-bot.log
-
-\- Niveaux : INFO, ERROR, WARNING
-
-\- Contenu : Toutes les actions automatiques, erreurs, et commandes exécutées
-
-  
-
-Commandes de monitoring
-
-\-----------------------
-
-\# Logs en temps réel
-
-tail -f /home/discord/discord-bot.log
-
-  
-
-\# Logs du service
-
+```
 journalctl -u discord-bot.service -f
+```
 
-  
+---
 
-\# Statut du service
+Cela vous permettra de garder votre bot en fonctionnement en arrière-plan, même après le redémarrage de votre système.
 
-systemctl status discord-bot.service
+### N'oubliez pas
 
-  
+- Assurez-vous que votre script Python fonctionne comme prévu avant de le configurer en tant que service.
+- Les chemins indiqués doivent correspondre à la structure de votre système.
+- Vérifiez les permissions du fichier du service pour qu'il soit accessible par `systemd`.
 
-\===============================================================================
 
-                SÉCURITÉ
 
-\===============================================================================
+## Contribuer
 
-  
+Les contributions sont les bienvenues ! N'hésitez pas à soumettre une demande de pull request ou à signaler des problèmes sur le dépôt GitHub.
 
-\- Token Discord : Stocké dans .env, jamais dans le code
+## Aide et Ressources
 
-\- Permissions : Commandes réservées aux administrateurs
-
-\- Validation : Vérification des variables d'environnement au démarrage
-
-\- Gestion d'erreurs : Protection contre les crashes
-
-  
-
-\===============================================================================
-
-               MISE À JOUR
-
-\===============================================================================
-
-  
-
-Pour mettre à jour le bot :
-
-  
-
-1\. Arrêter le service :
-
-  sudo systemctl stop discord-bot.service
-
-  
-
-2\. Mettre à jour le code :
-
-  git pull origin main
-
-  
-
-3\. Redémarrer le service :
-
-  sudo systemctl start discord-bot.service
-
-  
-
-\===============================================================================
-
-                CONTRIBUER
-
-\===============================================================================
-
-  
-
-Les contributions sont les bienvenues ! 
-
-  
-
-1\. Fork le projet
-
-2\. Créez votre branche feature (git checkout -b feature/AmazingFeature)
-
-3\. Commitez vos changements (git commit -m 'Add some AmazingFeature')
-
-4\. Push vers la branche (git push origin feature/AmazingFeature)
-
-5\. Ouvrez une Pull Request
-
-  
-
-\===============================================================================
-
-                RESSOURCES
-
-\===============================================================================
-
-  
-
-\- Documentation discord.py: https://discordpy.readthedocs.io/en/stable/
-
-\- Guide Discord Bot: https://discord.com/developers/docs/intro
-
-\- API Discord Events: https://discord.com/developers/docs/resources/guild-scheduled-event
-
-\- Python dotenv: https://pypi.org/project/python-dotenv/
-
-  
-
-\===============================================================================
-
-                LICENCE
-
-\===============================================================================
-
-  
-
-Ce projet est sous licence MIT. Voir le fichier LICENSE pour plus de détails.
-
-  
-
-\===============================================================================
-
-                SUPPORT
-
-\===============================================================================
-
-  
-
-Pour obtenir de l'aide :
-
-\- Issues GitHub : Créer une issue sur https://github.com/j0k3r91/bot-discord/issues
-
-\- Discord : Utilisez !help\_admin pour voir toutes les commandes disponibles
-
-  
-
-\===============================================================================
-
-               FIN DU DOCUMENT
-
-\===============================================================================
+- [Documentation de discord.py](https://discordpy.readthedocs.io/en/stable/)
+- [Guide pour créer un bot Discord](https://discord.com/developers/docs/intro)
