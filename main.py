@@ -85,7 +85,7 @@ def get_current_time():
     """Retourne l'heure actuelle dans le timezone configuré"""
     return datetime.now(ZoneInfo(TIMEZONE))
 
-# ======================== NOUVELLES FONCTIONS POUR LES ÉVÉNEMENTS ========================
+# ======================== FONCTIONS POUR LES ÉVÉNEMENTS (CORRIGÉES) ========================
 
 async def get_server_events():
     """Récupère tous les événements programmés du serveur"""
@@ -107,43 +107,33 @@ def construct_event_link(guild_id, event_id):
     """Construit le lien Discord pour un événement"""
     return f"https://discord.com/events/{guild_id}/{event_id}"
 
-async def get_filtered_events(event_filters=None):
-    """Récupère et filtre les événements selon des critères"""
-    if event_filters is None:
-        event_filters = ["boss", "siege", "raid"]  # Filtres par défaut
-    
+async def get_all_events():
+    """Récupère TOUS les événements du serveur sans filtrage"""
     events = await get_server_events()
     if not events:
         return {}
 
     guild_id = events[0].guild.id if events else None
-    filtered_events = {}
+    all_events = {}
 
     for event in events:
-        event_name_lower = event.name.lower()
-        
-        # Vérifier si le nom de l'événement contient un des mots-clés
-        for filter_word in event_filters:
-            if filter_word.lower() in event_name_lower:
-                event_link = construct_event_link(guild_id, event.id)
-                filtered_events[event.name] = {
-                    'id': event.id,
-                    'name': event.name,
-                    'link': event_link,
-                    'start_time': event.start_time,
-                    'description': event.description,
-                    'status': event.status.name,
-                    'participant_count': event.participant_count
-                }
-                logging.info(f"Événement trouvé: {event.name} -> {event_link}")
-                break
+        event_link = construct_event_link(guild_id, event.id)
+        all_events[event.name] = {
+            'id': event.id,
+            'name': event.name,
+            'link': event_link,
+            'start_time': event.start_time,
+            'description': event.description,
+            'status': event.status.name
+        }
+        logging.info(f"Événement trouvé: {event.name} -> {event_link}")
 
-    return filtered_events
+    return all_events
 
 async def update_event_links_cache():
     """Met à jour le cache des liens d'événements"""
     try:
-        events = await get_filtered_events()
+        events = await get_all_events()
         bot_state.cached_event_links = events
         logging.info(f"Cache des événements mis à jour: {len(events)} événement(s)")
         return events
@@ -166,8 +156,7 @@ async def get_event_links_formatted():
         
         formatted_links += f"**{event_name}**\n"
         formatted_links += f"📅 {start_str}\n"
-        formatted_links += f"🔗 {event_data['link']}\n"
-        formatted_links += f"👥 {event_data['participant_count']} participant(s)\n\n"
+        formatted_links += f"🔗 {event_data['link']}\n\n"
     
     return formatted_links
 
@@ -365,7 +354,7 @@ async def on_error(event, *args, **kwargs):
     """Gestionnaire d'erreurs global"""
     logging.error(f"Erreur dans l'événement {event}: {args}, {kwargs}")
 
-# ======================== NOUVELLES COMMANDES POUR LES ÉVÉNEMENTS ========================
+# ======================== COMMANDES POUR LES ÉVÉNEMENTS (CORRIGÉES) ========================
 
 @bot.command(name='events')
 @commands.has_permissions(administrator=True)
@@ -525,7 +514,7 @@ async def help_admin(ctx):
 • `!force_siege` - Envoyer un message siege
 • `!clean_events` - Supprimer tous les messages d'événements
 
-**Gestion des liens d'événements:** 🆕
+**Gestion des liens d'événements:**
 • `!events` - Afficher tous les événements avec liens
 • `!update_events` - Mettre à jour le cache des événements
 • `!event_link <nom>` - Récupérer le lien d'un événement spécifique
