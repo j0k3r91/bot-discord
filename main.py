@@ -42,6 +42,8 @@ class BotState:
         self.last_poll_deletion = None
         self.last_boss_event = None
         self.last_siege_event = None
+        # Nouveau: stockage des liens d'événements
+        self.cached_event_links = {}
 
 # Créer le bot avec les intents nécessaires
 intents = discord.Intents.default()
@@ -82,6 +84,94 @@ except (ValueError, TypeError) as e:
 def get_current_time():
     """Retourne l'heure actuelle dans le timezone configuré"""
     return datetime.now(ZoneInfo(TIMEZONE))
+
+# ======================== NOUVELLES FONCTIONS POUR LES ÉVÉNEMENTS ========================
+
+async def get_server_events():
+    """Récupère tous les événements programmés du serveur"""
+    try:
+        guild = bot.guilds[0] if bot.guilds else None  # Premier serveur du bot
+        if not guild:
+            logging.error("Aucun serveur trouvé pour le bot")
+            return []
+
+        events = await guild.fetch_scheduled_events()
+        logging.info(f"Trouvé {len(events)} événement(s) sur le serveur {guild.name}")
+        return events
+    
+    except discord.DiscordException as e:
+        logging.error(f"Erreur lors de la récupération des événements: {e}")
+        return []
+
+def construct_event_link(guild_id, event_id):
+    """Construit le lien Discord pour un événement"""
+    return f"https://discord.com/events/{guild_id}/{event_id}"
+
+async def get_filtered_events(event_filters=None):
+    """Récupère et filtre les événements selon des critères"""
+    if event_filters is None:
+        event_filters = ["boss", "siege", "raid"]  # Filtres par défaut
+    
+    events = await get_server_events()
+    if not events:
+        return {}
+
+    guild_id = events[0].guild.id if events else None
+    filtered_events = {}
+
+    for event in events:
+        event_name_lower = event.name.lower()
+        
+        # Vérifier si le nom de l'événement contient un des mots-clés
+        for filter_word in event_filters:
+            if filter_word.lower() in event_name_lower:
+                event_link = construct_event_link(guild_id, event.id)
+                filtered_events[event.name] = {
+                    'id': event.id,
+                    'name': event.name,
+                    'link': event_link,
+                    'start_time': event.start_time,
+                    'description': event.description,
+                    'status': event.status.name,
+                    'participant_count': event.participant_count
+                }
+                logging.info(f"Événement trouvé: {event.name} -> {event_link}")
+                break
+
+    return filtered_events
+
+async def update_event_links_cache():
+    """Met à jour le cache des liens d'événements"""
+    try:
+        events = await get_filtered_events()
+        bot_state.cached_event_links = events
+        logging.info(f"Cache des événements mis à jour: {len(events)} événement(s)")
+        return events
+    except Exception as e:
+        logging.error(f"Erreur lors de la mise à jour du cache: {e}")
+        return {}
+
+async def get_event_links_formatted():
+    """Retourne les liens d'événements dans un format lisible"""
+    events = await update_event_links_cache()
+    
+    if not events:
+        return "Aucun événement trouvé."
+    
+    formatted_links = "**🎮 Liens des Événements 🎮**\n\n"
+    
+    for event_name, event_data in events.items():
+        start_time = event_data['start_time']
+        start_str = start_time.strftime('%d/%m à %H:%M') if start_time else 'Date non définie'
+        
+        formatted_links += f"**{event_name}**\n"
+        formatted_links += f"📅 {start_str}\n"
+        formatted_links += f"🔗 {event_data['link']}\n"
+        formatted_links += f"👥 {event_data['participant_count']} participant(s)\n\n"
+    
+    return formatted_links
+
+# ======================== ANCIENNES FONCTIONS (inchangées) ========================
 
 async def recover_existing_messages():
     """Récupère les messages existants au redémarrage du bot"""
@@ -262,6 +352,9 @@ async def on_ready():
     # Récupérer les messages existants
     await recover_existing_messages()
     
+    # Mettre à jour le cache des événements au démarrage
+    await update_event_links_cache()
+    
     # Démarrer le vérificateur de planning
     if not schedule_checker.is_running():
         schedule_checker.start()
@@ -272,7 +365,63 @@ async def on_error(event, *args, **kwargs):
     """Gestionnaire d'erreurs global"""
     logging.error(f"Erreur dans l'événement {event}: {args}, {kwargs}")
 
-# Commandes existantes améliorées
+# ======================== NOUVELLES COMMANDES POUR LES ÉVÉNEMENTS ========================
+
+@bot.command(name='events')
+@commands.has_permissions(administrator=True)
+async def list_events(ctx):
+    """Affiche tous les événements du serveur avec leurs liens"""
+    formatted_links = await get_event_links_formatted()
+    
+    # Discord a une limite de 2000 caractères par message
+    if len(formatted_links) > 1900:
+        # Diviser en plusieurs messages si nécessaire
+        chunks = [formatted_links[i:i+1900] for i in range(0, len(formatted_links), 1900)]
+        for chunk in chunks:
+            await ctx.send(chunk)
+    else:
+        await ctx.send(formatted_links)
+
+@bot.command(name='update_events')
+@commands.has_permissions(administrator=True)
+async def update_events_cache(ctx):
+    """Force la mise à jour du cache des événements"""
+    events = await update_event_links_cache()
+    await ctx.send(f"✅ Cache mis à jour ! {len(events)} événement(s) trouvé(s).")
+    logging.info(f"Cache des événements mis à jour manuellement par {ctx.author}")
+
+@bot.command(name='event_link')
+@commands.has_permissions(administrator=True)
+async def get_specific_event_link(ctx, *, event_name):
+    """Récupère le lien d'un événement spécifique par son nom"""
+    events = bot_state.cached_event_links
+    
+    # Recherche exacte d'abord
+    if event_name in events:
+        event_data = events[event_name]
+        await ctx.send(f"**{event_name}**\n🔗 {event_data['link']}")
+        return
+    
+    # Recherche partielle
+    matching_events = []
+    for name, data in events.items():
+        if event_name.lower() in name.lower():
+            matching_events.append((name, data))
+    
+    if matching_events:
+        if len(matching_events) == 1:
+            name, data = matching_events[0]
+            await ctx.send(f"**{name}**\n🔗 {data['link']}")
+        else:
+            result = "**Plusieurs événements trouvés:**\n"
+            for name, data in matching_events[:5]:  # Limiter à 5 résultats
+                result += f"• **{name}**: {data['link']}\n"
+            await ctx.send(result)
+    else:
+        await ctx.send(f"❌ Aucun événement trouvé contenant '{event_name}'")
+
+# ======================== COMMANDES EXISTANTES (inchangées) ========================
+
 @bot.command(name='test')
 @commands.has_permissions(administrator=True)
 async def test_command(ctx):
@@ -290,6 +439,7 @@ async def status_command(ctx):
 **Sondage actif:** {'Oui' if bot_state.poll_message else 'Non'}
 **Messages boss:** {len(bot_state.boss_event_messages)}
 **Messages siege:** {len(bot_state.siege_event_messages)}
+**Événements en cache:** {len(bot_state.cached_event_links)}
 **Tâches actives:** {'Oui' if schedule_checker.is_running() else 'Non'}
 
 **Dernières exécutions:**
@@ -300,7 +450,6 @@ async def status_command(ctx):
     """
     await ctx.send(status_msg)
 
-# Nouvelles commandes administratives
 @bot.command(name='force_poll')
 @commands.has_permissions(administrator=True)
 async def force_poll(ctx):
@@ -375,6 +524,11 @@ async def help_admin(ctx):
 • `!force_boss` - Envoyer un message boss
 • `!force_siege` - Envoyer un message siege
 • `!clean_events` - Supprimer tous les messages d'événements
+
+**Gestion des liens d'événements:** 🆕
+• `!events` - Afficher tous les événements avec liens
+• `!update_events` - Mettre à jour le cache des événements
+• `!event_link <nom>` - Récupérer le lien d'un événement spécifique
 
 **Utilitaires:**
 • `!status` - Voir le statut du bot
