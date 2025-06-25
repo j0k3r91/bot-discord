@@ -29,7 +29,6 @@ SIEGE_EVENT_HOUR = 14
 SIEGE_EVENT_MINUTE = 30
 TIMEZONE = "Europe/Paris"
 
-# ======================== NOUVELLES CONSTANTES POUR LA MISE À JOUR HEBDOMADAIRE ========================
 # Mise à jour hebdomadaire le lundi à 00:00
 WEEKLY_UPDATE_DAY = 0  # Lundi (0=lundi, 6=dimanche)
 WEEKLY_UPDATE_HOUR = 0
@@ -45,8 +44,8 @@ Merci de venir 15 minutes avant l'événement.
 {siege_links}"""
 
 # Filtres pour les événements
-BOSS_KEYWORDS = ["boss", "raid", "donjon", "dragon"]
-SIEGE_KEYWORDS = ["sièges", "siege", "grotte", "cristal"]
+BOSS_KEYWORDS = ["boss", "samedi", "dimanche"]
+SIEGE_KEYWORDS = ["siège", "grotte", "cristal"]
 
 class BotState:
     """Classe pour encapsuler l'état du bot avec améliorations"""
@@ -105,7 +104,6 @@ def get_current_time():
     """Retourne l'heure actuelle dans le timezone configuré"""
     return datetime.now(ZoneInfo(TIMEZONE))
 
-# ======================== FONCTIONS POUR LES ÉVÉNEMENTS ========================
 
 async def get_server_events():
     """Récupère tous les événements programmés du serveur"""
@@ -184,7 +182,6 @@ async def get_event_links_formatted():
     
     return formatted_links
 
-# ======================== NOUVELLES FONCTIONS POUR LA MISE À JOUR HEBDOMADAIRE ========================
 
 async def filter_events_by_criteria(events, weekdays, keywords):
     """Filtre les événements par jour de la semaine et mots-clés"""
@@ -303,7 +300,6 @@ async def weekly_event_update():
     except Exception as e:
         logging.error(f"Erreur lors de la mise à jour hebdomadaire: {e}")
 
-# ======================== FONCTIONS EXISTANTES ========================
 
 async def recover_existing_messages():
     """Récupère les messages existants au redémarrage du bot"""
@@ -506,7 +502,6 @@ async def on_error(event, *args, **kwargs):
     """Gestionnaire d'erreurs global"""
     logging.error(f"Erreur dans l'événement {event}: {args}, {kwargs}")
 
-# ======================== COMMANDES POUR LES ÉVÉNEMENTS ========================
 
 @bot.command(name='events')
 @commands.has_permissions(administrator=True)
@@ -561,7 +556,6 @@ async def get_specific_event_link(ctx, *, event_name):
     else:
         await ctx.send(f"❌ Aucun événement trouvé contenant '{event_name}'")
 
-# ======================== NOUVELLES COMMANDES POUR LA MISE À JOUR HEBDOMADAIRE ========================
 
 @bot.command(name='update_boss_links')
 @commands.has_permissions(administrator=True)
@@ -587,7 +581,6 @@ async def force_update_all(ctx):
     await ctx.send("✅ Tous les liens d'événements mis à jour !")
     logging.info(f"Mise à jour complète forcée par {ctx.author}")
 
-# ======================== COMMANDES EXISTANTES ========================
 
 @bot.command(name='test')
 @commands.has_permissions(administrator=True)
