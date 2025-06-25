@@ -7,10 +7,12 @@ from discord.ext import commands, tasks
 import logging
 from zoneinfo import ZoneInfo  # Python 3.9+ (ou utilisez pytz pour versions antérieures)
 
-# Charger les variables d'environnement
+# ======================== CONFIGURATION INITIALE ========================
+
+# Charger les variables d'environnement depuis le fichier .env
 load_dotenv()
 
-# Configuration du logging
+# Configuration du système de logging pour tracer les activités du bot
 logging.basicConfig(
     level=logging.INFO,
     filename='/home/discord/discord-bot.log',
@@ -18,70 +20,94 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Constantes
-POLL_CREATION_HOUR = 18
+# ======================== CONSTANTES DE CONFIGURATION ========================
+
+# Horaires pour les sondages quotidiens
+POLL_CREATION_HOUR = 18      # Création du sondage à 18h
 POLL_CREATION_MINUTE = 0
-POLL_DELETION_HOUR = 0
+POLL_DELETION_HOUR = 0       # Suppression du sondage à minuit
 POLL_DELETION_MINUTE = 0
-BOSS_EVENT_HOUR = 20
+
+# Horaires pour les notifications d'événements
+BOSS_EVENT_HOUR = 20         # Notification boss à 20h30
 BOSS_EVENT_MINUTE = 30
-SIEGE_EVENT_HOUR = 14
+SIEGE_EVENT_HOUR = 14        # Notification siege à 14h30
 SIEGE_EVENT_MINUTE = 30
+
+# Configuration du fuseau horaire
 TIMEZONE = "Europe/Paris"
 
-# Mise à jour hebdomadaire le lundi à 00:00
-WEEKLY_UPDATE_DAY = 0  # Lundi (0=lundi, 6=dimanche)
-WEEKLY_UPDATE_HOUR = 0
+# Configuration de la mise à jour hebdomadaire des liens d'événements
+WEEKLY_UPDATE_DAY = 0        # Lundi (0=lundi, 6=dimanche)
+WEEKLY_UPDATE_HOUR = 0       # À minuit
 WEEKLY_UPDATE_MINUTE = 0
 
-# Templates de messages (pour garder le texte fixe)
+# ======================== TEMPLATES DE MESSAGES ========================
+
+# Template pour les messages d'événements boss (samedi/dimanche)
 BOSS_MESSAGE_TEMPLATE = """Présence pour l'événement Boss du weekend (samedi et dimanche) à 21h00 (heure de Paris) - 15h00 (heure du Québec).
 Merci de venir 15 minutes avant l'événement.
 {boss_links}"""
 
+# Template pour les messages d'événements siege (dimanche)
 SIEGE_MESSAGE_TEMPLATE = """Présence pour le siège du donjon de la Grotte de Cristal le dimanche à 15h00 (heure de Paris) - 9h00 (heure du Québec).
 Merci de venir 15 minutes avant l'événement.
 {siege_links}"""
 
-# Filtres pour les événements
+# ======================== MOTS-CLÉS POUR LE FILTRAGE DES ÉVÉNEMENTS ========================
+
+# Mots-clés pour identifier les événements boss
 BOSS_KEYWORDS = ["boss", "samedi", "dimanche"]
+# Mots-clés pour identifier les événements siege
 SIEGE_KEYWORDS = ["siège", "grotte", "cristal"]
 
+# ======================== CLASSE DE GESTION DE L'ÉTAT DU BOT ========================
+
 class BotState:
-    """Classe pour encapsuler l'état du bot avec améliorations"""
+    """Classe pour encapsuler l'état du bot et suivre tous les messages actifs"""
     def __init__(self):
-        self.poll_message = None
-        self.text_message = None
-        # Séparer les messages d'événements
-        self.boss_event_messages = []
-        self.siege_event_messages = []
+        # Messages des sondages quotidiens
+        self.poll_message = None      # Le sondage principal
+        self.text_message = None      # Le message @everyone qui accompagne le sondage
+        
+        # Listes des messages d'événements (pour pouvoir les supprimer/remplacer)
+        self.boss_event_messages = []    # Messages pour les événements boss
+        self.siege_event_messages = []   # Messages pour les événements siege
+        
         # Tracking des dernières exécutions pour éviter les doublons
-        self.last_poll_creation = None
-        self.last_poll_deletion = None
-        self.last_boss_event = None
-        self.last_siege_event = None
-        self.last_weekly_update = None  # NOUVEAU: tracking mise à jour hebdomadaire
-        # Nouveau: stockage des liens d'événements
+        self.last_poll_creation = None     # Dernière création de sondage
+        self.last_poll_deletion = None     # Dernière suppression de sondage
+        self.last_boss_event = None        # Dernier événement boss
+        self.last_siege_event = None       # Dernier événement siege
+        self.last_weekly_update = None     # Dernière mise à jour hebdomadaire
+        
+        # Cache des événements Discord récupérés
         self.cached_event_links = {}
 
-# Créer le bot avec les intents nécessaires
+# ======================== INITIALISATION DU BOT ========================
+
+# Configuration des intents Discord nécessaires
 intents = discord.Intents.default()
-intents.message_content = True
+intents.message_content = True  # Nécessaire pour lire le contenu des messages
+
+# Création de l'instance du bot avec préfixe '!'
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Instance de l'état du bot
+# Instance globale de l'état du bot
 bot_state = BotState()
 
-# Vérification et récupération des variables d'environnement
+# ======================== GESTION DES VARIABLES D'ENVIRONNEMENT ========================
+
 def get_env_variables():
-    """Récupère et valide les variables d'environnement"""
+    """Récupère et valide toutes les variables d'environnement nécessaires"""
     required_vars = {
-        'TOKEN_DISCORD': os.getenv('TOKEN_DISCORD'),
-        'CHANNEL_ID_DP': os.getenv('CHANNEL_ID_DP'),
-        'CHANNEL_ID_BOSS': os.getenv('CHANNEL_ID_BOSS'),
-        'CHANNEL_ID_SIEGE': os.getenv('CHANNEL_ID_SIEGE')
+        'TOKEN_DISCORD': os.getenv('TOKEN_DISCORD'),      # Token du bot Discord
+        'CHANNEL_ID_DP': os.getenv('CHANNEL_ID_DP'),      # Canal pour les sondages quotidiens
+        'CHANNEL_ID_BOSS': os.getenv('CHANNEL_ID_BOSS'),  # Canal pour les événements boss
+        'CHANNEL_ID_SIEGE': os.getenv('CHANNEL_ID_SIEGE') # Canal pour les événements siege
     }
     
+    # Vérification que toutes les variables sont définies
     for var_name, var_value in required_vars.items():
         if not var_value:
             logging.error(f"Variable d'environnement {var_name} non définie dans .env")
@@ -89,9 +115,10 @@ def get_env_variables():
     
     return required_vars
 
-# Récupérer les variables d'environnement
+# Chargement et validation des variables d'environnement
 try:
     env_vars = get_env_variables()
+    # Conversion des IDs de canaux en entiers
     CHANNEL_ID_DP = int(env_vars['CHANNEL_ID_DP'])
     CHANNEL_ID_BOSS = int(env_vars['CHANNEL_ID_BOSS'])
     CHANNEL_ID_SIEGE = int(env_vars['CHANNEL_ID_SIEGE'])
@@ -100,19 +127,24 @@ except (ValueError, TypeError) as e:
     logging.error(f"Erreur de configuration: {e}")
     exit(1)
 
+# ======================== FONCTIONS UTILITAIRES ========================
+
 def get_current_time():
     """Retourne l'heure actuelle dans le timezone configuré"""
     return datetime.now(ZoneInfo(TIMEZONE))
 
+# ======================== FONCTIONS DE GESTION DES ÉVÉNEMENTS DISCORD ========================
 
 async def get_server_events():
-    """Récupère tous les événements programmés du serveur"""
+    """Récupère tous les événements programmés du serveur Discord"""
     try:
-        guild = bot.guilds[0] if bot.guilds else None  # Premier serveur du bot
+        # Récupération du premier serveur où le bot est présent
+        guild = bot.guilds[0] if bot.guilds else None
         if not guild:
             logging.error("Aucun serveur trouvé pour le bot")
             return []
 
+        # Récupération de tous les événements programmés
         events = await guild.fetch_scheduled_events()
         logging.info(f"Trouvé {len(events)} événement(s) sur le serveur {guild.name}")
         return events
@@ -122,11 +154,11 @@ async def get_server_events():
         return []
 
 def construct_event_link(guild_id, event_id):
-    """Construit le lien Discord pour un événement"""
+    """Construit le lien Discord direct vers un événement"""
     return f"https://discord.com/events/{guild_id}/{event_id}"
 
 async def get_all_events():
-    """Récupère TOUS les événements du serveur sans filtrage"""
+    """Récupère TOUS les événements du serveur et les formate en dictionnaire"""
     events = await get_server_events()
     if not events:
         return {}
@@ -134,6 +166,7 @@ async def get_all_events():
     guild_id = events[0].guild.id if events else None
     all_events = {}
 
+    # Traitement de chaque événement
     for event in events:
         try:
             event_link = construct_event_link(guild_id, event.id)
@@ -153,7 +186,7 @@ async def get_all_events():
     return all_events
 
 async def update_event_links_cache():
-    """Met à jour le cache des liens d'événements"""
+    """Met à jour le cache local des liens d'événements"""
     try:
         events = await get_all_events()
         bot_state.cached_event_links = events
@@ -164,7 +197,7 @@ async def update_event_links_cache():
         return {}
 
 async def get_event_links_formatted():
-    """Retourne les liens d'événements dans un format lisible"""
+    """Retourne tous les événements dans un format lisible pour Discord"""
     events = await update_event_links_cache()
     
     if not events:
@@ -172,6 +205,7 @@ async def get_event_links_formatted():
     
     formatted_links = "**🎮 Liens des Événements 🎮**\n\n"
     
+    # Formatage de chaque événement
     for event_name, event_data in events.items():
         start_time = event_data['start_time']
         start_str = start_time.strftime('%d/%m à %H:%M') if start_time else 'Date non définie'
@@ -182,9 +216,10 @@ async def get_event_links_formatted():
     
     return formatted_links
 
+# ======================== FONCTIONS DE FILTRAGE DES ÉVÉNEMENTS ========================
 
 async def filter_events_by_criteria(events, weekdays, keywords):
-    """Filtre les événements par jour de la semaine et mots-clés"""
+    """Filtre les événements selon le jour de la semaine et des mots-clés"""
     filtered_events = []
     
     for event_name, event_data in events.items():
@@ -192,12 +227,12 @@ async def filter_events_by_criteria(events, weekdays, keywords):
         if not start_time:
             continue
             
-        # Vérifier le jour de la semaine (0=lundi, 6=dimanche)
+        # Vérification du jour de la semaine (0=lundi, 6=dimanche)
         event_weekday = start_time.weekday()
         if event_weekday not in weekdays:
             continue
             
-        # Vérifier les mots-clés dans le nom de l'événement
+        # Vérification des mots-clés dans le nom de l'événement
         event_name_lower = event_name.lower()
         if any(keyword.lower() in event_name_lower for keyword in keywords):
             filtered_events.append(event_data)
@@ -205,40 +240,46 @@ async def filter_events_by_criteria(events, weekdays, keywords):
     
     return filtered_events
 
+# ======================== FONCTIONS DE MISE À JOUR HEBDOMADAIRE ========================
+
 async def update_boss_messages():
-    """Met à jour les messages d'événements boss avec les nouveaux liens"""
+    """Met à jour les messages d'événements boss avec les nouveaux liens (UN SEUL MESSAGE)"""
     try:
-        # Récupérer tous les événements
+        # Récupération de tous les événements
         events = await get_all_events()
         if not events:
             logging.info("Aucun événement trouvé pour la mise à jour boss")
             return
         
-        # Filtrer les événements boss (samedi=5, dimanche=6)
+        # Filtrage des événements boss (samedi=5, dimanche=6)
         boss_events = await filter_events_by_criteria(events, [5, 6], BOSS_KEYWORDS)
         
         if not boss_events:
             logging.info("Aucun événement boss trouvé pour cette semaine")
             return
         
-        # Supprimer les anciens messages boss
+        # Suppression des anciens messages boss
         await delete_messages(bot_state.boss_event_messages)
         
-        # Créer les nouveaux messages
+        # Récupération du canal boss
         channel = bot.get_channel(CHANNEL_ID_BOSS)
         if not channel:
             logging.error(f"Canal boss {CHANNEL_ID_BOSS} introuvable")
             return
         
-        for event_data in boss_events:
-            boss_links = event_data['link']
-            message_content = BOSS_MESSAGE_TEMPLATE.format(boss_links=boss_links)
-            
-            message = await channel.send(message_content)
-            bot_state.boss_event_messages.append(message)
-            logging.info(f"Message boss créé pour: {event_data['name']}")
+        # *** MODIFICATION ICI *** : Regroupement de TOUS les liens dans UN SEUL message
+        all_boss_links = "\n".join(event_data['link'] for event_data in boss_events)
         
-        logging.info(f"Mise à jour boss terminée: {len(boss_events)} événement(s) traité(s)")
+        # Création d'un seul message avec tous les liens
+        message_content = BOSS_MESSAGE_TEMPLATE.format(boss_links=all_boss_links)
+        
+        message = await channel.send(message_content)
+        bot_state.boss_event_messages.append(message)
+        
+        # Logging informatif
+        event_names = [event_data['name'] for event_data in boss_events]
+        logging.info(f"Message boss unique créé pour: {', '.join(event_names)}")
+        logging.info(f"Mise à jour boss terminée: {len(boss_events)} événement(s) dans 1 message")
         
     except Exception as e:
         logging.error(f"Erreur lors de la mise à jour des messages boss: {e}")
@@ -246,28 +287,29 @@ async def update_boss_messages():
 async def update_siege_messages():
     """Met à jour les messages d'événements siege avec les nouveaux liens"""
     try:
-        # Récupérer tous les événements
+        # Récupération de tous les événements
         events = await get_all_events()
         if not events:
             logging.info("Aucun événement trouvé pour la mise à jour siege")
             return
         
-        # Filtrer les événements siege (dimanche=6)
+        # Filtrage des événements siege (dimanche=6 uniquement)
         siege_events = await filter_events_by_criteria(events, [6], SIEGE_KEYWORDS)
         
         if not siege_events:
             logging.info("Aucun événement siege trouvé pour cette semaine")
             return
         
-        # Supprimer les anciens messages siege
+        # Suppression des anciens messages siege
         await delete_messages(bot_state.siege_event_messages)
         
-        # Créer les nouveaux messages
+        # Récupération du canal siege
         channel = bot.get_channel(CHANNEL_ID_SIEGE)
         if not channel:
             logging.error(f"Canal siege {CHANNEL_ID_SIEGE} introuvable")
             return
         
+        # Création d'un message par événement siege (généralement un seul)
         for event_data in siege_events:
             siege_links = event_data['link']
             message_content = SIEGE_MESSAGE_TEMPLATE.format(siege_links=siege_links)
@@ -282,17 +324,17 @@ async def update_siege_messages():
         logging.error(f"Erreur lors de la mise à jour des messages siege: {e}")
 
 async def weekly_event_update():
-    """Fonction principale de mise à jour hebdomadaire des événements"""
+    """Fonction principale de mise à jour hebdomadaire (appelée chaque lundi à minuit)"""
     logging.info("=== DÉBUT DE LA MISE À JOUR HEBDOMADAIRE DES ÉVÉNEMENTS ===")
     
     try:
-        # Forcer la mise à jour du cache des événements
+        # Mise à jour forcée du cache des événements
         await update_event_links_cache()
         
-        # Mettre à jour les messages boss
+        # Mise à jour des messages boss
         await update_boss_messages()
         
-        # Mettre à jour les messages siege
+        # Mise à jour des messages siege
         await update_siege_messages()
         
         logging.info("=== MISE À JOUR HEBDOMADAIRE TERMINÉE AVEC SUCCÈS ===")
@@ -300,11 +342,12 @@ async def weekly_event_update():
     except Exception as e:
         logging.error(f"Erreur lors de la mise à jour hebdomadaire: {e}")
 
+# ======================== FONCTIONS DE RÉCUPÉRATION DES MESSAGES EXISTANTS ========================
 
 async def recover_existing_messages():
-    """Récupère les messages existants au redémarrage du bot"""
+    """Récupère les messages existants au redémarrage du bot pour éviter les doublons"""
     try:
-        # Récupérer les sondages existants
+        # Récupération des sondages existants dans le canal DP
         dp_channel = bot.get_channel(CHANNEL_ID_DP)
         if dp_channel:
             async for message in dp_channel.history(limit=50):
@@ -316,7 +359,7 @@ async def recover_existing_messages():
                         bot_state.text_message = message
                         logging.info(f"Message texte récupéré: {message.id}")
         
-        # Récupérer les messages d'événements boss
+        # Récupération des messages d'événements boss
         boss_channel = bot.get_channel(CHANNEL_ID_BOSS)
         if boss_channel:
             async for message in boss_channel.history(limit=10):
@@ -324,7 +367,7 @@ async def recover_existing_messages():
                     bot_state.boss_event_messages.append(message)
                     logging.info(f"Message boss récupéré: {message.id}")
         
-        # Récupérer les messages d'événements siege
+        # Récupération des messages d'événements siege
         siege_channel = bot.get_channel(CHANNEL_ID_SIEGE)
         if siege_channel:
             async for message in siege_channel.history(limit=10):
@@ -337,8 +380,10 @@ async def recover_existing_messages():
     except Exception as e:
         logging.error(f"Erreur lors de la récupération des messages: {e}")
 
+# ======================== FONCTIONS DE GESTION DES SONDAGES QUOTIDIENS ========================
+
 async def create_poll():
-    """Créer un sondage avec la nouvelle API Poll Resource"""
+    """Créer un sondage quotidien avec la nouvelle API Poll Resource de Discord"""
     global bot_state
 
     channel = bot.get_channel(CHANNEL_ID_DP)
@@ -347,28 +392,34 @@ async def create_poll():
         return
 
     try:
-        # Supprimer les anciens messages s'ils existent
+        # Suppression des anciens messages s'ils existent
         await delete_poll_messages()
 
+        # Création du sondage avec question et durée
         poll = discord.Poll(
             question="Présence pour le 👥Donjon Party👥 du soir à 21h (heure de Paris) - 15h (heure du Québec).",
-            duration=timedelta(hours=8)
+            duration=timedelta(hours=8)  # Le sondage dure 8 heures
         )
 
+        # Ajout des options de réponse
         poll.add_answer(text="Oui", emoji="✅")
         poll.add_answer(text="Non", emoji="❌")
 
+        # Envoi du sondage
         bot_state.poll_message = await channel.send(poll=poll)
         logging.info("Sondage créé avec succès !")
 
+        # Envoi du message @everyone d'accompagnement
         bot_state.text_message = await channel.send("⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️@everyone⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️")
         logging.info("Message texte créé avec succès !")
 
     except discord.DiscordException as e:
         logging.error(f"Erreur lors de la création du sondage : {e}")
 
+# ======================== FONCTIONS DE NOTIFICATIONS D'ÉVÉNEMENTS ========================
+
 async def send_boss_event():
-    """Gérer spécifiquement les événements boss"""
+    """Gérer spécifiquement les notifications d'événements boss (samedi/dimanche 20h30)"""
     await send_event_message(
         CHANNEL_ID_BOSS, 
         bot_state.boss_event_messages, 
@@ -376,7 +427,7 @@ async def send_boss_event():
     )
 
 async def send_siege_event():
-    """Gérer spécifiquement les événements siege"""
+    """Gérer spécifiquement les notifications d'événements siege (dimanche 14h30)"""
     await send_event_message(
         CHANNEL_ID_SIEGE, 
         bot_state.siege_event_messages, 
@@ -384,17 +435,17 @@ async def send_siege_event():
     )
 
 async def send_event_message(channel_id, message_list, event_message):
-    """Fonction générique pour gérer les événements"""
+    """Fonction générique pour envoyer les notifications d'événements"""
     channel = bot.get_channel(channel_id)
     if not channel:
         logging.error(f"Impossible de trouver le canal {channel_id}.")
         return
 
     try:
-        # Supprimer les messages précédents de l'événement
+        # Suppression des messages précédents de l'événement
         await delete_messages(message_list)
         
-        # Envoyer un nouveau message
+        # Envoi du nouveau message de notification
         message = await channel.send(event_message)
         message_list.append(message)
         logging.info(f"Message de l'événement envoyé avec succès dans le canal {channel_id} !")
@@ -402,8 +453,10 @@ async def send_event_message(channel_id, message_list, event_message):
     except discord.DiscordException as e:
         logging.error(f"Erreur lors de l'envoi du message de l'événement : {e}")
 
+# ======================== FONCTIONS DE SUPPRESSION DE MESSAGES ========================
+
 async def delete_messages(message_list):
-    """Supprimer une liste de messages"""
+    """Supprimer une liste de messages Discord"""
     for msg in message_list[:]:  # Copie pour éviter les modifications durant l'itération
         if msg:
             try:
@@ -414,7 +467,7 @@ async def delete_messages(message_list):
                 logging.error(f"Erreur lors de la suppression du message {msg.id if msg else 'None'} : {e}")
 
 async def delete_poll_messages():
-    """Supprimer les messages de sondage et texte"""
+    """Supprimer spécifiquement les messages de sondage et texte"""
     global bot_state
     
     messages_to_delete = []
@@ -428,7 +481,9 @@ async def delete_poll_messages():
         bot_state.poll_message = None
         bot_state.text_message = None
 
-@tasks.loop(minutes=1)
+# ======================== SYSTÈME DE PLANIFICATION AUTOMATIQUE ========================
+
+@tasks.loop(minutes=1)  # Vérification toutes les minutes
 async def schedule_checker():
     """Vérificateur de planning principal avec protection contre les doublons"""
     now = get_current_time()
@@ -449,7 +504,7 @@ async def schedule_checker():
         bot_state.last_poll_deletion = current_date
         logging.info("Messages de sondage supprimés à 00:00 !")
     
-    # NOUVELLE FONCTIONNALITÉ: Mise à jour hebdomadaire des événements (lundi 00:00)
+    # Mise à jour hebdomadaire des événements (lundi 00:00)
     elif (now.weekday() == WEEKLY_UPDATE_DAY and 
           now.hour == WEEKLY_UPDATE_HOUR and 
           now.minute == WEEKLY_UPDATE_MINUTE and
@@ -458,7 +513,7 @@ async def schedule_checker():
         bot_state.last_weekly_update = current_date
         logging.info("Mise à jour hebdomadaire des événements effectuée !")
     
-    # Événement boss les samedis et dimanches à 20:30 (avec protection doublon)
+    # Notification événement boss les samedis et dimanches à 20:30
     elif (now.weekday() in [5, 6] and 
           now.hour == BOSS_EVENT_HOUR and 
           now.minute == BOSS_EVENT_MINUTE and
@@ -467,7 +522,7 @@ async def schedule_checker():
         bot_state.last_boss_event = current_datetime
         logging.info("Message boss envoyé pour le week-end !")
     
-    # Événement siege les dimanches à 14:30 (avec protection doublon)
+    # Notification événement siege les dimanches à 14:30
     elif (now.weekday() == 6 and 
           now.hour == SIEGE_EVENT_HOUR and 
           now.minute == SIEGE_EVENT_MINUTE and
@@ -478,30 +533,33 @@ async def schedule_checker():
 
 @schedule_checker.before_loop
 async def before_schedule_checker():
-    """Attendre que le bot soit prêt avant de démarrer les tâches"""
+    """Attendre que le bot soit prêt avant de démarrer les tâches automatiques"""
     await bot.wait_until_ready()
+
+# ======================== ÉVÉNEMENTS DU BOT DISCORD ========================
 
 @bot.event
 async def on_ready():
-    """Événement déclenché quand le bot est prêt"""
+    """Événement déclenché quand le bot est connecté et prêt"""
     logging.info(f"Bot connecté en tant que {bot.user}")
     
-    # Récupérer les messages existants
+    # Récupération des messages existants pour éviter les doublons
     await recover_existing_messages()
     
-    # Mettre à jour le cache des événements au démarrage
+    # Mise à jour du cache des événements au démarrage
     await update_event_links_cache()
     
-    # Démarrer le vérificateur de planning
+    # Démarrage du système de planification automatique
     if not schedule_checker.is_running():
         schedule_checker.start()
         logging.info("Tâches de planning démarrées !")
 
 @bot.event
 async def on_error(event, *args, **kwargs):
-    """Gestionnaire d'erreurs global"""
+    """Gestionnaire d'erreurs global pour les événements Discord"""
     logging.error(f"Erreur dans l'événement {event}: {args}, {kwargs}")
 
+# ======================== COMMANDES DE CONSULTATION DES ÉVÉNEMENTS ========================
 
 @bot.command(name='events')
 @commands.has_permissions(administrator=True)
@@ -511,7 +569,7 @@ async def list_events(ctx):
     
     # Discord a une limite de 2000 caractères par message
     if len(formatted_links) > 1900:
-        # Diviser en plusieurs messages si nécessaire
+        # Division en plusieurs messages si nécessaire
         chunks = [formatted_links[i:i+1900] for i in range(0, len(formatted_links), 1900)]
         for chunk in chunks:
             await ctx.send(chunk)
@@ -538,7 +596,7 @@ async def get_specific_event_link(ctx, *, event_name):
         await ctx.send(f"**{event_name}**\n🔗 {event_data['link']}")
         return
     
-    # Recherche partielle
+    # Recherche partielle si pas de correspondance exacte
     matching_events = []
     for name, data in events.items():
         if event_name.lower() in name.lower():
@@ -556,6 +614,7 @@ async def get_specific_event_link(ctx, *, event_name):
     else:
         await ctx.send(f"❌ Aucun événement trouvé contenant '{event_name}'")
 
+# ======================== COMMANDES DE MISE À JOUR MANUELLE ========================
 
 @bot.command(name='update_boss_links')
 @commands.has_permissions(administrator=True)
@@ -581,17 +640,18 @@ async def force_update_all(ctx):
     await ctx.send("✅ Tous les liens d'événements mis à jour !")
     logging.info(f"Mise à jour complète forcée par {ctx.author}")
 
+# ======================== COMMANDES UTILITAIRES ========================
 
 @bot.command(name='test')
 @commands.has_permissions(administrator=True)
 async def test_command(ctx):
-    """Commande de test pour les administrateurs"""
+    """Commande de test pour vérifier le bon fonctionnement du bot"""
     await ctx.send("Bot fonctionnel ! ✅")
 
 @bot.command(name='status')
 @commands.has_permissions(administrator=True)
 async def status_command(ctx):
-    """Affiche le statut complet du bot"""
+    """Affiche le statut complet du bot avec toutes les informations importantes"""
     now = get_current_time()
     status_msg = f"""
 **Statut du Bot** 🤖
@@ -610,6 +670,8 @@ async def status_command(ctx):
 • Mise à jour hebdo: {bot_state.last_weekly_update or 'Jamais'}
     """
     await ctx.send(status_msg)
+
+# ======================== COMMANDES DE FORCE ET DE NETTOYAGE ========================
 
 @bot.command(name='force_poll')
 @commands.has_permissions(administrator=True)
@@ -670,10 +732,12 @@ async def recover_command(ctx):
     await ctx.send("✅ Récupération des messages terminée !")
     logging.info(f"Récupération manuelle lancée par {ctx.author}")
 
+# ======================== COMMANDE D'AIDE ========================
+
 @bot.command(name='help_admin')
 @commands.has_permissions(administrator=True)
 async def help_admin(ctx):
-    """Affiche l'aide pour les commandes administrateur"""
+    """Affiche l'aide complète pour toutes les commandes administrateur"""
     help_msg = """
 **Commandes Administrateur** 🔧
 
@@ -707,9 +771,11 @@ async def help_admin(ctx):
     """
     await ctx.send(help_msg)
 
-# Gestionnaire d'erreur pour les commandes
+# ======================== GESTIONNAIRE D'ERREURS POUR LES COMMANDES ========================
+
 @bot.event
 async def on_command_error(ctx, error):
+    """Gestionnaire d'erreurs global pour toutes les commandes du bot"""
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("❌ Vous n'avez pas les permissions nécessaires.")
     elif isinstance(error, commands.CommandNotFound):
@@ -719,8 +785,12 @@ async def on_command_error(ctx, error):
         logging.error(f"Erreur de commande: {error}")
         await ctx.send("❌ Une erreur s'est produite lors de l'exécution de la commande.")
 
+# ======================== DÉMARRAGE DU BOT ========================
+
 if __name__ == "__main__":
+    """Point d'entrée principal du script"""
     try:
+        # Démarrage du bot avec le token Discord
         bot.run(TOKEN_DISCORD)
     except Exception as e:
         logging.error(f"Erreur critique lors du démarrage du bot: {e}")
