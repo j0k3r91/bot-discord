@@ -117,16 +117,20 @@ async def get_all_events():
     all_events = {}
 
     for event in events:
-        event_link = construct_event_link(guild_id, event.id)
-        all_events[event.name] = {
-            'id': event.id,
-            'name': event.name,
-            'link': event_link,
-            'start_time': event.start_time,
-            'description': event.description,
-            'status': event.status.name
-        }
-        logging.info(f"Événement trouvé: {event.name} -> {event_link}")
+        try:
+            event_link = construct_event_link(guild_id, event.id)
+            all_events[event.name] = {
+                'id': event.id,
+                'name': event.name,
+                'link': event_link,
+                'start_time': event.start_time,
+                'description': event.description,
+                'status': event.status.name
+            }
+            logging.info(f"Événement trouvé: {event.name} -> {event_link}")
+        except Exception as e:
+            logging.error(f"Erreur lors du traitement de l'événement {event.name}: {e}")
+            continue
 
     return all_events
 
