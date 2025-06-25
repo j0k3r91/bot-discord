@@ -29,6 +29,25 @@ SIEGE_EVENT_HOUR = 14
 SIEGE_EVENT_MINUTE = 30
 TIMEZONE = "Europe/Paris"
 
+# ======================== NOUVELLES CONSTANTES POUR LA MISE À JOUR HEBDOMADAIRE ========================
+# Mise à jour hebdomadaire le lundi à 00:00
+WEEKLY_UPDATE_DAY = 0  # Lundi (0=lundi, 6=dimanche)
+WEEKLY_UPDATE_HOUR = 0
+WEEKLY_UPDATE_MINUTE = 0
+
+# Templates de messages (pour garder le texte fixe)
+BOSS_MESSAGE_TEMPLATE = """Présence pour l'événement Boss du weekend (samedi et dimanche) à 21h00 (heure de Paris) - 15h00 (heure du Québec).
+Merci de venir 15 minutes avant l'événement.
+{boss_links}"""
+
+SIEGE_MESSAGE_TEMPLATE = """Présence pour le siège du donjon de la Grotte de Cristal le dimanche à 15h00 (heure de Paris) - 9h00 (heure du Québec).
+Merci de venir 15 minutes avant l'événement.
+{siege_links}"""
+
+# Filtres pour les événements
+BOSS_KEYWORDS = ["boss", "raid", "donjon", "dragon"]
+SIEGE_KEYWORDS = ["sièges", "siege", "grotte", "cristal"]
+
 class BotState:
     """Classe pour encapsuler l'état du bot avec améliorations"""
     def __init__(self):
@@ -42,6 +61,7 @@ class BotState:
         self.last_poll_deletion = None
         self.last_boss_event = None
         self.last_siege_event = None
+        self.last_weekly_update = None  # NOUVEAU: tracking mise à jour hebdomadaire
         # Nouveau: stockage des liens d'événements
         self.cached_event_links = {}
 
@@ -85,7 +105,7 @@ def get_current_time():
     """Retourne l'heure actuelle dans le timezone configuré"""
     return datetime.now(ZoneInfo(TIMEZONE))
 
-# ======================== FONCTIONS POUR LES ÉVÉNEMENTS (CORRIGÉES) ========================
+# ======================== FONCTIONS POUR LES ÉVÉNEMENTS ========================
 
 async def get_server_events():
     """Récupère tous les événements programmés du serveur"""
@@ -164,7 +184,126 @@ async def get_event_links_formatted():
     
     return formatted_links
 
-# ======================== ANCIENNES FONCTIONS (inchangées) ========================
+# ======================== NOUVELLES FONCTIONS POUR LA MISE À JOUR HEBDOMADAIRE ========================
+
+async def filter_events_by_criteria(events, weekdays, keywords):
+    """Filtre les événements par jour de la semaine et mots-clés"""
+    filtered_events = []
+    
+    for event_name, event_data in events.items():
+        start_time = event_data.get('start_time')
+        if not start_time:
+            continue
+            
+        # Vérifier le jour de la semaine (0=lundi, 6=dimanche)
+        event_weekday = start_time.weekday()
+        if event_weekday not in weekdays:
+            continue
+            
+        # Vérifier les mots-clés dans le nom de l'événement
+        event_name_lower = event_name.lower()
+        if any(keyword.lower() in event_name_lower for keyword in keywords):
+            filtered_events.append(event_data)
+            logging.info(f"Événement filtré trouvé: {event_name} (jour {event_weekday})")
+    
+    return filtered_events
+
+async def update_boss_messages():
+    """Met à jour les messages d'événements boss avec les nouveaux liens"""
+    try:
+        # Récupérer tous les événements
+        events = await get_all_events()
+        if not events:
+            logging.info("Aucun événement trouvé pour la mise à jour boss")
+            return
+        
+        # Filtrer les événements boss (samedi=5, dimanche=6)
+        boss_events = await filter_events_by_criteria(events, [5, 6], BOSS_KEYWORDS)
+        
+        if not boss_events:
+            logging.info("Aucun événement boss trouvé pour cette semaine")
+            return
+        
+        # Supprimer les anciens messages boss
+        await delete_messages(bot_state.boss_event_messages)
+        
+        # Créer les nouveaux messages
+        channel = bot.get_channel(CHANNEL_ID_BOSS)
+        if not channel:
+            logging.error(f"Canal boss {CHANNEL_ID_BOSS} introuvable")
+            return
+        
+        for event_data in boss_events:
+            boss_links = event_data['link']
+            message_content = BOSS_MESSAGE_TEMPLATE.format(boss_links=boss_links)
+            
+            message = await channel.send(message_content)
+            bot_state.boss_event_messages.append(message)
+            logging.info(f"Message boss créé pour: {event_data['name']}")
+        
+        logging.info(f"Mise à jour boss terminée: {len(boss_events)} événement(s) traité(s)")
+        
+    except Exception as e:
+        logging.error(f"Erreur lors de la mise à jour des messages boss: {e}")
+
+async def update_siege_messages():
+    """Met à jour les messages d'événements siege avec les nouveaux liens"""
+    try:
+        # Récupérer tous les événements
+        events = await get_all_events()
+        if not events:
+            logging.info("Aucun événement trouvé pour la mise à jour siege")
+            return
+        
+        # Filtrer les événements siege (dimanche=6)
+        siege_events = await filter_events_by_criteria(events, [6], SIEGE_KEYWORDS)
+        
+        if not siege_events:
+            logging.info("Aucun événement siege trouvé pour cette semaine")
+            return
+        
+        # Supprimer les anciens messages siege
+        await delete_messages(bot_state.siege_event_messages)
+        
+        # Créer les nouveaux messages
+        channel = bot.get_channel(CHANNEL_ID_SIEGE)
+        if not channel:
+            logging.error(f"Canal siege {CHANNEL_ID_SIEGE} introuvable")
+            return
+        
+        for event_data in siege_events:
+            siege_links = event_data['link']
+            message_content = SIEGE_MESSAGE_TEMPLATE.format(siege_links=siege_links)
+            
+            message = await channel.send(message_content)
+            bot_state.siege_event_messages.append(message)
+            logging.info(f"Message siege créé pour: {event_data['name']}")
+        
+        logging.info(f"Mise à jour siege terminée: {len(siege_events)} événement(s) traité(s)")
+        
+    except Exception as e:
+        logging.error(f"Erreur lors de la mise à jour des messages siege: {e}")
+
+async def weekly_event_update():
+    """Fonction principale de mise à jour hebdomadaire des événements"""
+    logging.info("=== DÉBUT DE LA MISE À JOUR HEBDOMADAIRE DES ÉVÉNEMENTS ===")
+    
+    try:
+        # Forcer la mise à jour du cache des événements
+        await update_event_links_cache()
+        
+        # Mettre à jour les messages boss
+        await update_boss_messages()
+        
+        # Mettre à jour les messages siege
+        await update_siege_messages()
+        
+        logging.info("=== MISE À JOUR HEBDOMADAIRE TERMINÉE AVEC SUCCÈS ===")
+        
+    except Exception as e:
+        logging.error(f"Erreur lors de la mise à jour hebdomadaire: {e}")
+
+# ======================== FONCTIONS EXISTANTES ========================
 
 async def recover_existing_messages():
     """Récupère les messages existants au redémarrage du bot"""
@@ -185,7 +324,7 @@ async def recover_existing_messages():
         boss_channel = bot.get_channel(CHANNEL_ID_BOSS)
         if boss_channel:
             async for message in boss_channel.history(limit=10):
-                if message.author == bot.user and "⬆️⬆️⬆️" in message.content:
+                if message.author == bot.user and ("Présence pour l'événement Boss" in message.content or "⬆️⬆️⬆️" in message.content):
                     bot_state.boss_event_messages.append(message)
                     logging.info(f"Message boss récupéré: {message.id}")
         
@@ -193,7 +332,7 @@ async def recover_existing_messages():
         siege_channel = bot.get_channel(CHANNEL_ID_SIEGE)
         if siege_channel:
             async for message in siege_channel.history(limit=10):
-                if message.author == bot.user and "⬆️⬆️⬆️" in message.content:
+                if message.author == bot.user and ("Présence pour le siège" in message.content or "⬆️⬆️⬆️" in message.content):
                     bot_state.siege_event_messages.append(message)
                     logging.info(f"Message siege récupéré: {message.id}")
                     
@@ -314,6 +453,15 @@ async def schedule_checker():
         bot_state.last_poll_deletion = current_date
         logging.info("Messages de sondage supprimés à 00:00 !")
     
+    # NOUVELLE FONCTIONNALITÉ: Mise à jour hebdomadaire des événements (lundi 00:00)
+    elif (now.weekday() == WEEKLY_UPDATE_DAY and 
+          now.hour == WEEKLY_UPDATE_HOUR and 
+          now.minute == WEEKLY_UPDATE_MINUTE and
+          bot_state.last_weekly_update != current_date):
+        await weekly_event_update()
+        bot_state.last_weekly_update = current_date
+        logging.info("Mise à jour hebdomadaire des événements effectuée !")
+    
     # Événement boss les samedis et dimanches à 20:30 (avec protection doublon)
     elif (now.weekday() in [5, 6] and 
           now.hour == BOSS_EVENT_HOUR and 
@@ -358,7 +506,7 @@ async def on_error(event, *args, **kwargs):
     """Gestionnaire d'erreurs global"""
     logging.error(f"Erreur dans l'événement {event}: {args}, {kwargs}")
 
-# ======================== COMMANDES POUR LES ÉVÉNEMENTS (CORRIGÉES) ========================
+# ======================== COMMANDES POUR LES ÉVÉNEMENTS ========================
 
 @bot.command(name='events')
 @commands.has_permissions(administrator=True)
@@ -413,7 +561,33 @@ async def get_specific_event_link(ctx, *, event_name):
     else:
         await ctx.send(f"❌ Aucun événement trouvé contenant '{event_name}'")
 
-# ======================== COMMANDES EXISTANTES (inchangées) ========================
+# ======================== NOUVELLES COMMANDES POUR LA MISE À JOUR HEBDOMADAIRE ========================
+
+@bot.command(name='update_boss_links')
+@commands.has_permissions(administrator=True)
+async def force_update_boss(ctx):
+    """Force la mise à jour des liens boss manuellement"""
+    await update_boss_messages()
+    await ctx.send("✅ Messages boss mis à jour avec les nouveaux liens !")
+    logging.info(f"Mise à jour boss forcée par {ctx.author}")
+
+@bot.command(name='update_siege_links')
+@commands.has_permissions(administrator=True)
+async def force_update_siege(ctx):
+    """Force la mise à jour des liens siege manuellement"""
+    await update_siege_messages()
+    await ctx.send("✅ Messages siege mis à jour avec les nouveaux liens !")
+    logging.info(f"Mise à jour siege forcée par {ctx.author}")
+
+@bot.command(name='update_all_links')
+@commands.has_permissions(administrator=True)
+async def force_update_all(ctx):
+    """Force la mise à jour de tous les liens d'événements"""
+    await weekly_event_update()
+    await ctx.send("✅ Tous les liens d'événements mis à jour !")
+    logging.info(f"Mise à jour complète forcée par {ctx.author}")
+
+# ======================== COMMANDES EXISTANTES ========================
 
 @bot.command(name='test')
 @commands.has_permissions(administrator=True)
@@ -440,6 +614,7 @@ async def status_command(ctx):
 • Sondage supprimé: {bot_state.last_poll_deletion or 'Jamais'}
 • Boss event: {bot_state.last_boss_event or 'Jamais'}
 • Siege event: {bot_state.last_siege_event or 'Jamais'}
+• Mise à jour hebdo: {bot_state.last_weekly_update or 'Jamais'}
     """
     await ctx.send(status_msg)
 
@@ -523,11 +698,19 @@ async def help_admin(ctx):
 • `!update_events` - Mettre à jour le cache des événements
 • `!event_link <nom>` - Récupérer le lien d'un événement spécifique
 
+**🆕 Mise à jour automatique des liens:**
+• `!update_boss_links` - Mettre à jour les liens boss
+• `!update_siege_links` - Mettre à jour les liens siege  
+• `!update_all_links` - Mettre à jour tous les liens
+
 **Utilitaires:**
 • `!status` - Voir le statut du bot
 • `!recover` - Récupérer les messages existants
 • `!clean_all` - Nettoyer tous les messages
 • `!test` - Test de fonctionnement
+
+**⏰ Automatisations:**
+• Lundi 00:00 → Mise à jour automatique des liens d'événements
     """
     await ctx.send(help_msg)
 
