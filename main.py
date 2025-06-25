@@ -243,7 +243,7 @@ async def filter_events_by_criteria(events, weekdays, keywords):
 # ======================== FONCTIONS DE MISE À JOUR HEBDOMADAIRE ========================
 
 async def update_boss_messages():
-    """Met à jour les messages d'événements boss avec les nouveaux liens (UN SEUL MESSAGE)"""
+    """Met à jour les messages d'événements boss avec les nouveaux liens (DEUX MESSAGES SÉPARÉS)"""
     try:
         # Récupération de tous les événements
         events = await get_all_events()
@@ -267,19 +267,40 @@ async def update_boss_messages():
             logging.error(f"Canal boss {CHANNEL_ID_BOSS} introuvable")
             return
         
-        # *** MODIFICATION ICI *** : Regroupement de TOUS les liens dans UN SEUL message
-        all_boss_links = "\n".join(event_data['link'] for event_data in boss_events)
+        # Séparation des événements par jour
+        saturday_events = []  # samedi = 5
+        sunday_events = []    # dimanche = 6
         
-        # Création d'un seul message avec tous les liens
-        message_content = BOSS_MESSAGE_TEMPLATE.format(boss_links=all_boss_links)
+        for event_data in boss_events:
+            if event_data['start_time'].weekday() == 5:  # Samedi
+                saturday_events.append(event_data)
+            elif event_data['start_time'].weekday() == 6:  # Dimanche
+                sunday_events.append(event_data)
         
-        message = await channel.send(message_content)
-        bot_state.boss_event_messages.append(message)
+        # PREMIER MESSAGE : Texte complet + lien(s) du samedi
+        if saturday_events:
+            saturday_links = "\n".join(event_data['link'] for event_data in saturday_events)
+            saturday_message_content = BOSS_MESSAGE_TEMPLATE.format(boss_links=saturday_links)
+            
+            message = await channel.send(saturday_message_content)
+            bot_state.boss_event_messages.append(message)
+            
+            saturday_names = [event_data['name'] for event_data in saturday_events]
+            logging.info(f"Message boss samedi créé pour: {', '.join(saturday_names)}")
         
-        # Logging informatif
-        event_names = [event_data['name'] for event_data in boss_events]
-        logging.info(f"Message boss unique créé pour: {', '.join(event_names)}")
-        logging.info(f"Mise à jour boss terminée: {len(boss_events)} événement(s) dans 1 message")
+        # DEUXIÈME MESSAGE : Juste le(s) lien(s) du dimanche
+        if sunday_events:
+            sunday_links = "\n".join(event_data['link'] for event_data in sunday_events)
+            
+            # Juste les liens, sans le texte
+            message = await channel.send(sunday_links)
+            bot_state.boss_event_messages.append(message)
+            
+            sunday_names = [event_data['name'] for event_data in sunday_events]
+            logging.info(f"Message boss dimanche créé pour: {', '.join(sunday_names)}")
+        
+        total_events = len(saturday_events) + len(sunday_events)
+        logging.info(f"Mise à jour boss terminée: {total_events} événement(s) dans 2 messages séparés")
         
     except Exception as e:
         logging.error(f"Erreur lors de la mise à jour des messages boss: {e}")
