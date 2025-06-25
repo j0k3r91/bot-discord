@@ -61,7 +61,7 @@ BOSS_KEYWORDS = ["boss", "samedi", "dimanche"]
 # Mots-clés pour identifier les événements siege
 SIEGE_KEYWORDS = ["siège", "grotte", "cristal"]
 
-# ======================== CLASSE DE GESTION DE L'ÉTAT DU BOT ========================
+# ======================== CLASSE DE GESTION DE L'ÉTAT DU BOT (MODIFIÉE) ========================
 
 class BotState:
     """Classe pour encapsuler l'état du bot et suivre tous les messages actifs"""
@@ -70,9 +70,11 @@ class BotState:
         self.poll_message = None      # Le sondage principal
         self.text_message = None      # Le message @everyone qui accompagne le sondage
         
-        # Listes des messages d'événements (pour pouvoir les supprimer/remplacer)
-        self.boss_event_messages = []    # Messages pour les événements boss
-        self.siege_event_messages = []   # Messages pour les événements siege
+        # SÉPARATION : Messages de liens d'événements VS notifications
+        self.boss_event_messages = []           # Messages avec les liens d'événements boss
+        self.siege_event_messages = []          # Messages avec les liens d'événements siege
+        self.boss_notification_messages = []    # Messages @everyone pour boss
+        self.siege_notification_messages = []   # Messages @everyone pour siege
         
         # Tracking des dernières exécutions pour éviter les doublons
         self.last_poll_creation = None     # Dernière création de sondage
@@ -258,7 +260,7 @@ async def update_boss_messages():
             logging.info("Aucun événement boss trouvé pour cette semaine")
             return
         
-        # Suppression des anciens messages boss
+        # Suppression des anciens messages boss (SEULEMENT les liens)
         await delete_messages(bot_state.boss_event_messages)
         
         # Récupération du canal boss
@@ -321,7 +323,7 @@ async def update_siege_messages():
             logging.info("Aucun événement siege trouvé pour cette semaine")
             return
         
-        # Suppression des anciens messages siege
+        # Suppression des anciens messages siege (SEULEMENT les liens)
         await delete_messages(bot_state.siege_event_messages)
         
         # Récupération du canal siege
@@ -363,7 +365,7 @@ async def weekly_event_update():
     except Exception as e:
         logging.error(f"Erreur lors de la mise à jour hebdomadaire: {e}")
 
-# ======================== FONCTIONS DE RÉCUPÉRATION DES MESSAGES EXISTANTS ========================
+# ======================== FONCTIONS DE RÉCUPÉRATION DES MESSAGES EXISTANTS (MODIFIÉE) ========================
 
 async def recover_existing_messages():
     """Récupère les messages existants au redémarrage du bot pour éviter les doublons"""
@@ -384,17 +386,29 @@ async def recover_existing_messages():
         boss_channel = bot.get_channel(CHANNEL_ID_BOSS)
         if boss_channel:
             async for message in boss_channel.history(limit=10):
-                if message.author == bot.user and ("Présence pour l'événement Boss" in message.content or "⬆️⬆️⬆️" in message.content):
-                    bot_state.boss_event_messages.append(message)
-                    logging.info(f"Message boss récupéré: {message.id}")
+                if message.author == bot.user:
+                    if "Présence pour l'événement Boss" in message.content:
+                        # Message avec lien d'événement
+                        bot_state.boss_event_messages.append(message)
+                        logging.info(f"Message boss avec lien récupéré: {message.id}")
+                    elif "⬆️⬆️⬆️" in message.content:
+                        # Message de notification
+                        bot_state.boss_notification_messages.append(message)
+                        logging.info(f"Message boss notification récupéré: {message.id}")
         
         # Récupération des messages d'événements siege
         siege_channel = bot.get_channel(CHANNEL_ID_SIEGE)
         if siege_channel:
             async for message in siege_channel.history(limit=10):
-                if message.author == bot.user and ("Présence pour le siège" in message.content or "⬆️⬆️⬆️" in message.content):
-                    bot_state.siege_event_messages.append(message)
-                    logging.info(f"Message siege récupéré: {message.id}")
+                if message.author == bot.user:
+                    if "Présence pour le siège" in message.content:
+                        # Message avec lien d'événement
+                        bot_state.siege_event_messages.append(message)
+                        logging.info(f"Message siege avec lien récupéré: {message.id}")
+                    elif "⬆️⬆️⬆️" in message.content:
+                        # Message de notification
+                        bot_state.siege_notification_messages.append(message)
+                        logging.info(f"Message siege notification récupéré: {message.id}")
                     
         logging.info("Récupération des messages terminée")
         
@@ -437,42 +451,42 @@ async def create_poll():
     except discord.DiscordException as e:
         logging.error(f"Erreur lors de la création du sondage : {e}")
 
-# ======================== FONCTIONS DE NOTIFICATIONS D'ÉVÉNEMENTS ========================
+# ======================== FONCTIONS DE NOTIFICATIONS D'ÉVÉNEMENTS (MODIFIÉES) ========================
 
 async def send_boss_event():
     """Gérer spécifiquement les notifications d'événements boss (samedi/dimanche 20h30)"""
-    await send_event_message(
+    await send_notification_message(
         CHANNEL_ID_BOSS, 
-        bot_state.boss_event_messages, 
+        bot_state.boss_notification_messages,  # NOUVELLE LISTE séparée
         "⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️@everyone⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️"
     )
 
 async def send_siege_event():
     """Gérer spécifiquement les notifications d'événements siege (dimanche 14h30)"""
-    await send_event_message(
+    await send_notification_message(
         CHANNEL_ID_SIEGE, 
-        bot_state.siege_event_messages, 
+        bot_state.siege_notification_messages,  # NOUVELLE LISTE séparée
         "⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️@everyone⬆️⬆️⬆️⬆️⬆️⬆️⬆️⬆️"
     )
 
-async def send_event_message(channel_id, message_list, event_message):
-    """Fonction générique pour envoyer les notifications d'événements"""
+async def send_notification_message(channel_id, message_list, event_message):
+    """Fonction pour envoyer SEULEMENT les notifications @everyone"""
     channel = bot.get_channel(channel_id)
     if not channel:
         logging.error(f"Impossible de trouver le canal {channel_id}.")
         return
 
     try:
-        # Suppression des messages précédents de l'événement
+        # Supprimer SEULEMENT les messages de notification précédents
         await delete_messages(message_list)
         
-        # Envoi du nouveau message de notification
+        # Envoyer le nouveau message de notification
         message = await channel.send(event_message)
         message_list.append(message)
-        logging.info(f"Message de l'événement envoyé avec succès dans le canal {channel_id} !")
+        logging.info(f"Message de notification envoyé avec succès dans le canal {channel_id} !")
         
     except discord.DiscordException as e:
-        logging.error(f"Erreur lors de l'envoi du message de l'événement : {e}")
+        logging.error(f"Erreur lors de l'envoi du message de notification : {e}")
 
 # ======================== FONCTIONS DE SUPPRESSION DE MESSAGES ========================
 
@@ -678,8 +692,10 @@ async def status_command(ctx):
 **Statut du Bot** 🤖
 **Heure actuelle:** {now.strftime('%H:%M:%S (%d/%m/%Y)')}
 **Sondage actif:** {'Oui' if bot_state.poll_message else 'Non'}
-**Messages boss:** {len(bot_state.boss_event_messages)}
-**Messages siege:** {len(bot_state.siege_event_messages)}
+**Messages boss (liens):** {len(bot_state.boss_event_messages)}
+**Messages boss (notifs):** {len(bot_state.boss_notification_messages)}
+**Messages siege (liens):** {len(bot_state.siege_event_messages)}
+**Messages siege (notifs):** {len(bot_state.siege_notification_messages)}
 **Événements en cache:** {len(bot_state.cached_event_links)}
 **Tâches actives:** {'Oui' if schedule_checker.is_running() else 'Non'}
 
@@ -692,7 +708,7 @@ async def status_command(ctx):
     """
     await ctx.send(status_msg)
 
-# ======================== COMMANDES DE FORCE ET DE NETTOYAGE ========================
+# ======================== COMMANDES DE FORCE ET DE NETTOYAGE (MODIFIÉES) ========================
 
 @bot.command(name='force_poll')
 @commands.has_permissions(administrator=True)
@@ -705,7 +721,7 @@ async def force_poll(ctx):
 @bot.command(name='force_boss')
 @commands.has_permissions(administrator=True)
 async def force_boss(ctx):
-    """Force l'envoi d'un message boss"""
+    """Force l'envoi d'un message boss (SEULEMENT notification @everyone)"""
     await send_boss_event()
     await ctx.send("✅ Message boss envoyé manuellement !")
     logging.info(f"Message boss créé manuellement par {ctx.author}")
@@ -713,7 +729,7 @@ async def force_boss(ctx):
 @bot.command(name='force_siege')
 @commands.has_permissions(administrator=True)
 async def force_siege(ctx):
-    """Force l'envoi d'un message siege"""
+    """Force l'envoi d'un message siege (SEULEMENT notification @everyone)"""
     await send_siege_event()
     await ctx.send("✅ Message siege envoyé manuellement !")
     logging.info(f"Message siege créé manuellement par {ctx.author}")
@@ -729,9 +745,11 @@ async def clean_poll(ctx):
 @bot.command(name='clean_events')
 @commands.has_permissions(administrator=True)
 async def clean_events(ctx):
-    """Nettoie tous les messages d'événements"""
+    """Nettoie tous les messages d'événements (liens ET notifications)"""
     await delete_messages(bot_state.boss_event_messages)
     await delete_messages(bot_state.siege_event_messages)
+    await delete_messages(bot_state.boss_notification_messages)
+    await delete_messages(bot_state.siege_notification_messages)
     await ctx.send("✅ Messages d'événements nettoyés !")
     logging.info(f"Messages d'événements nettoyés par {ctx.author}")
 
@@ -742,6 +760,8 @@ async def clean_all(ctx):
     await delete_poll_messages()
     await delete_messages(bot_state.boss_event_messages)
     await delete_messages(bot_state.siege_event_messages)
+    await delete_messages(bot_state.boss_notification_messages)
+    await delete_messages(bot_state.siege_notification_messages)
     await ctx.send("✅ Tous les messages nettoyés !")
     logging.info(f"Tous les messages nettoyés par {ctx.author}")
 
@@ -767,8 +787,8 @@ async def help_admin(ctx):
 • `!clean_poll` - Supprimer les messages de sondage
 
 **Gestion des événements:**
-• `!force_boss` - Envoyer un message boss
-• `!force_siege` - Envoyer un message siege
+• `!force_boss` - Envoyer une notification boss (@everyone uniquement)
+• `!force_siege` - Envoyer une notification siege (@everyone uniquement)
 • `!clean_events` - Supprimer tous les messages d'événements
 
 **Gestion des liens d'événements:**
